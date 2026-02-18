@@ -17,8 +17,8 @@ enum AppMode {
     MainMenu,
     CategorySelection,
     ProjectSelection,
-    InputUrl,      // Screen to type git URL
-    CloneCategory, // Select where to clone
+    InputUrl,
+    CloneCategory,
 }
 
 struct App {
