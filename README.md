@@ -1,4 +1,4 @@
-# IntelliJ TUI Launcher
+# idea-tui
 
 A high-performance, minimalist terminal-based project manager and launcher for IntelliJ IDEA Ultimate Edition.
 

@@ -295,7 +295,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(3)].as_ref()).split(f.area());
 
     let title_text = match app.mode {
-        AppMode::MainMenu => " IntelliJ Launcher ".to_string(),
+        AppMode::MainMenu => " idea-tui ".to_string(),
         AppMode::CategorySelection => " Select Category ".to_string(),
         AppMode::ProjectSelection => format!(" Projects in {} ", app.selected_category.as_ref().unwrap_or(&"".to_string())),
         AppMode::InputUrl => " Clone Repository: Paste URL ".to_string(),
