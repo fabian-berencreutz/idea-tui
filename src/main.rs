@@ -33,6 +33,8 @@ struct App {
     project_state: ListState,
     input: String,
     status_message: Option<(String, Instant)>,
+    search_query: String,
+    is_searching: bool,
 }
 
 impl App {
@@ -51,6 +53,8 @@ impl App {
             project_state: ListState::default(),
             input: String::new(),
             status_message: None,
+            search_query: String::new(),
+            is_searching: false,
         }
     }
 
@@ -90,23 +94,44 @@ impl App {
         self.selected_category = Some(category);
     }
 
+    fn get_filtered_items(&self) -> Vec<String> {
+        let items = match self.mode {
+            AppMode::CategorySelection | AppMode::CloneCategory => &self.categories,
+            AppMode::ProjectSelection => &self.projects,
+            _ => return Vec::new(),
+        };
+
+        if self.search_query.is_empty() {
+            items.clone()
+        } else {
+            items.iter()
+                .filter(|item| item.to_lowercase().contains(&self.search_query.to_lowercase()))
+                .cloned()
+                .collect()
+        }
+    }
+
     fn next(&mut self) {
         match self.mode {
             AppMode::MainMenu => {
                 let i = match self.menu_state.selected() { Some(i) => if i >= self.menu_items.len() - 1 { 0 } else { i + 1 }, None => 0 };
                 self.menu_state.select(Some(i));
             }
-            AppMode::CategorySelection | AppMode::CloneCategory => {
-                if self.categories.is_empty() { return; }
-                let i = match self.category_state.selected() { Some(i) => if i >= self.categories.len() - 1 { 0 } else { i + 1 }, None => 0 };
-                self.category_state.select(Some(i));
+            _ => {
+                let filtered_len = self.get_filtered_items().len();
+                if filtered_len == 0 { return; }
+                match self.mode {
+                    AppMode::CategorySelection | AppMode::CloneCategory => {
+                        let i = match self.category_state.selected() { Some(i) => if i >= filtered_len - 1 { 0 } else { i + 1 }, None => 0 };
+                        self.category_state.select(Some(i));
+                    }
+                    AppMode::ProjectSelection => {
+                        let i = match self.project_state.selected() { Some(i) => if i >= filtered_len - 1 { 0 } else { i + 1 }, None => 0 };
+                        self.project_state.select(Some(i));
+                    }
+                    _ => {}
+                }
             }
-            AppMode::ProjectSelection => {
-                if self.projects.is_empty() { return; }
-                let i = match self.project_state.selected() { Some(i) => if i >= self.projects.len() - 1 { 0 } else { i + 1 }, None => 0 };
-                self.project_state.select(Some(i));
-            }
-            AppMode::InputUrl => {}
         }
     }
 
@@ -116,21 +141,26 @@ impl App {
                 let i = match self.menu_state.selected() { Some(i) => if i == 0 { self.menu_items.len() - 1 } else { i - 1 }, None => 0 };
                 self.menu_state.select(Some(i));
             }
-            AppMode::CategorySelection | AppMode::CloneCategory => {
-                if self.categories.is_empty() { return; }
-                let i = match self.category_state.selected() { Some(i) => if i == 0 { self.categories.len() - 1 } else { i - 1 }, None => 0 };
-                self.category_state.select(Some(i));
+            _ => {
+                let filtered_len = self.get_filtered_items().len();
+                if filtered_len == 0 { return; }
+                match self.mode {
+                    AppMode::CategorySelection | AppMode::CloneCategory => {
+                        let i = match self.category_state.selected() { Some(i) => if i == 0 { filtered_len - 1 } else { i - 1 }, None => 0 };
+                        self.category_state.select(Some(i));
+                    }
+                    AppMode::ProjectSelection => {
+                        let i = match self.project_state.selected() { Some(i) => if i == 0 { filtered_len - 1 } else { i - 1 }, None => 0 };
+                        self.project_state.select(Some(i));
+                    }
+                    _ => {}
+                }
             }
-            AppMode::ProjectSelection => {
-                if self.projects.is_empty() { return; }
-                let i = match self.project_state.selected() { Some(i) => if i == 0 { self.projects.len() - 1 } else { i - 1 }, None => 0 };
-                self.project_state.select(Some(i));
-            }
-            AppMode::InputUrl => {}
         }
     }
 
     fn on_enter(&mut self) -> Result<bool, Box<dyn Error>> {
+        let filtered = self.get_filtered_items();
         match self.mode {
             AppMode::MainMenu => {
                 match self.menu_state.selected() {
@@ -147,19 +177,25 @@ impl App {
             }
             AppMode::CategorySelection => {
                 if let Some(i) = self.category_state.selected() {
-                    let cat = self.categories[i].clone();
-                    self.load_projects(cat);
-                    self.mode = AppMode::ProjectSelection;
+                    if i < filtered.len() {
+                        let cat = filtered[i].clone();
+                        self.load_projects(cat);
+                        self.mode = AppMode::ProjectSelection;
+                        self.is_searching = false;
+                        self.search_query.clear();
+                    }
                 }
                 Ok(false)
             }
             AppMode::ProjectSelection => {
                 if let (Some(cat), Some(i)) = (&self.selected_category, self.project_state.selected()) {
-                    let proj = &self.projects[i];
-                    let path = self.base_dir.join(cat).join(proj);
-                    process::Command::new("/opt/intellij-idea-ultimate-edition/bin/idea")
-                        .arg(path.to_str().unwrap_or("")).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
-                    self.status_message = Some((format!("Launched {}!", proj), Instant::now()));
+                    if i < filtered.len() {
+                        let proj = &filtered[i];
+                        let path = self.base_dir.join(cat).join(proj);
+                        process::Command::new("/opt/intellij-idea-ultimate-edition/bin/idea")
+                            .arg(path.to_str().unwrap_or("")).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
+                        self.status_message = Some((format!("Launched {}!", proj), Instant::now()));
+                    }
                 }
                 Ok(false)
             }
@@ -172,8 +208,12 @@ impl App {
             }
             AppMode::CloneCategory => {
                 if let Some(i) = self.category_state.selected() {
-                    let cat = self.categories[i].clone();
-                    self.clone_repo(cat)?;
+                    if i < filtered.len() {
+                        let cat = filtered[i].clone();
+                        self.clone_repo(cat)?;
+                        self.is_searching = false;
+                        self.search_query.clear();
+                    }
                 }
                 Ok(false)
             }
@@ -183,29 +223,19 @@ impl App {
     fn clone_repo(&mut self, category: String) -> Result<(), Box<dyn Error>> {
         let clone_dir = self.base_dir.join(&category);
         let url = self.input.clone();
-        
         let project_name = url.split('/').last()
             .and_then(|s| s.strip_suffix(".git").or(Some(s)))
             .unwrap_or("new-project");
 
         self.status_message = Some((format!("Cloning {}...", project_name), Instant::now()));
-        
         let mut command = process::Command::new("gh");
         command.arg("repo").arg("clone").arg(&url).arg("--").arg("--quiet")
-            .current_dir(&clone_dir)
-            .stdout(process::Stdio::null())
-            .stderr(process::Stdio::null());
+            .current_dir(&clone_dir).stdout(process::Stdio::null()).stderr(process::Stdio::null());
 
         let status = match command.status() {
             Ok(s) if s.success() => Ok(s),
-            _ => {
-                process::Command::new("git")
-                    .arg("clone").arg("--quiet").arg(&url)
-                    .current_dir(&clone_dir)
-                    .stdout(process::Stdio::null())
-                    .stderr(process::Stdio::null())
-                    .status()
-            }
+            _ => process::Command::new("git").arg("clone").arg("--quiet").arg(&url)
+                .current_dir(&clone_dir).stdout(process::Stdio::null()).stderr(process::Stdio::null()).status()
         }?;
 
         if status.success() {
@@ -222,6 +252,8 @@ impl App {
     }
 
     fn go_back(&mut self) {
+        self.is_searching = false;
+        self.search_query.clear();
         match self.mode {
             AppMode::MainMenu => {}
             AppMode::CategorySelection | AppMode::InputUrl => self.mode = AppMode::MainMenu,
@@ -261,7 +293,22 @@ where <B as Backend>::Error: 'static {
         terminal.draw(|f| ui(f, app))?;
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                if app.mode == AppMode::InputUrl {
+                if app.is_searching {
+                    match key.code {
+                        KeyCode::Enter => { app.is_searching = false; } // Finish searching, don't execute
+                        KeyCode::Char(c) => { 
+                            app.search_query.push(c); 
+                            if let AppMode::CategorySelection | AppMode::CloneCategory = app.mode { 
+                                app.category_state.select(Some(0)); 
+                            } else { 
+                                app.project_state.select(Some(0)); 
+                            } 
+                        }
+                        KeyCode::Backspace => { app.search_query.pop(); }
+                        KeyCode::Esc => { app.is_searching = false; app.search_query.clear(); }
+                        _ => {}
+                    }
+                } else if app.mode == AppMode::InputUrl {
                     match key.code {
                         KeyCode::Enter => { app.on_enter()?; }
                         KeyCode::Char(c) => { app.input.push(c); }
@@ -272,16 +319,13 @@ where <B as Backend>::Error: 'static {
                 } else {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('/') => { if app.mode != AppMode::MainMenu { app.is_searching = true; } }
                         KeyCode::Down | KeyCode::Char('j') => app.next(),
                         KeyCode::Up | KeyCode::Char('k') => app.previous(),
                         KeyCode::Enter => { app.on_enter()?; },
-                        KeyCode::Right | KeyCode::Char('l') => { 
-                            if app.mode != AppMode::MainMenu {
-                                app.on_enter()?; 
-                            }
-                        },
+                        KeyCode::Right | KeyCode::Char('l') => { if app.mode != AppMode::MainMenu { app.on_enter()?; } },
                         KeyCode::Left | KeyCode::Backspace | KeyCode::Char('h') => app.go_back(),
-                        KeyCode::Esc => app.go_back(),
+                        KeyCode::Esc => { if !app.search_query.is_empty() { app.search_query.clear(); } else { app.go_back(); } }
                         _ => {}
                     }
                 }
@@ -308,30 +352,35 @@ fn ui(f: &mut Frame, app: &mut App) {
             let items: Vec<ListItem> = app.menu_items.iter().map(|i| ListItem::new(*i).style(Style::default().fg(Color::Rgb(255, 255, 255)))).collect();
             f.render_stateful_widget(List::new(items).block(Block::default().title(" Actions ").borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan)).highlight_symbol("> "), chunks[1], &mut app.menu_state);
         }
-        AppMode::CategorySelection | AppMode::CloneCategory => {
-            let items: Vec<ListItem> = app.categories.iter().map(|c| ListItem::new(format!("📁 {}", c)).style(Style::default().fg(Color::Rgb(255, 255, 255)))).collect();
-            f.render_stateful_widget(List::new(items).block(Block::default().title(" Categories ").borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan)).highlight_symbol("> "), chunks[1], &mut app.category_state);
-        }
-        AppMode::ProjectSelection => {
-            let items: Vec<ListItem> = app.projects.iter().map(|p| ListItem::new(p.as_str()).style(Style::default().fg(Color::Rgb(255, 255, 255)))).collect();
-            f.render_stateful_widget(List::new(items).block(Block::default().title(" Select Project ").borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).highlight_symbol("> "), chunks[1], &mut app.project_state);
-        }
+                AppMode::CategorySelection | AppMode::CloneCategory | AppMode::ProjectSelection => {
+                    let filtered = app.get_filtered_items();
+                    let items: Vec<ListItem> = if filtered.is_empty() {
+                        vec![ListItem::new("  No results found").style(Style::default().fg(Color::Red).add_modifier(Modifier::ITALIC))]
+                    } else {
+                        filtered.iter().map(|item| {
+                            let display = if app.mode == AppMode::ProjectSelection { item.clone() } else { format!("📁 {}", item) };
+                            ListItem::new(display).style(Style::default().fg(Color::Rgb(255, 255, 255)))
+                        }).collect()
+                    };
+                    
+                    let title = if app.mode == AppMode::ProjectSelection { " Projects " } else { " Categories " };
+                    let state = if app.mode == AppMode::ProjectSelection { &mut app.project_state } else { &mut app.category_state };
+                    
+                    f.render_stateful_widget(List::new(items).block(Block::default().title(title).borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).highlight_symbol("> "), chunks[1], state);
+                }
         AppMode::InputUrl => {
-            let input_block = Paragraph::new(app.input.as_str())
-                .style(Style::default().fg(Color::Yellow))
-                .block(Block::default().borders(Borders::ALL).title(" Git Repository URL "));
-            f.render_widget(input_block, chunks[1]);
+            f.render_widget(Paragraph::new(app.input.as_str()).style(Style::default().fg(Color::Yellow)).block(Block::default().borders(Borders::ALL).title(" Git Repository URL ")), chunks[1]);
         }
     }
 
-    let footer_text = if let Some((msg, _)) = &app.status_message { msg.clone() } else {
+    let footer_text = if app.is_searching { format!("/{} (Press Enter to browse results)", app.search_query) } else if let Some((msg, _)) = &app.status_message { msg.clone() } else {
         match app.mode {
             AppMode::MainMenu => "Enter: Select  •  q: Quit".to_string(),
-            AppMode::CategorySelection => "Enter / Right: View Projects  •  Backspace: Back  •  q: Quit".to_string(),
-            AppMode::ProjectSelection => "Enter: OPEN IN INTELLIJ  •  Backspace: Back  •  q: Quit".to_string(),
+            AppMode::CategorySelection => "/: Search  •  Enter / Right: View Projects  •  Backspace: Back  •  q: Quit".to_string(),
+            AppMode::ProjectSelection => "/: Search  •  Enter: OPEN IN INTELLIJ  •  Backspace: Back  •  q: Quit".to_string(),
             AppMode::InputUrl => "Type or Paste URL  •  Enter: Continue  •  Esc: Cancel".to_string(),
-            AppMode::CloneCategory => "Select where to save the project  •  Enter: Clone".to_string(),
+            AppMode::CloneCategory => "/: Search  •  Select Category  •  Enter: Clone".to_string(),
         }
     };
-    f.render_widget(Paragraph::new(footer_text).style(if app.status_message.is_some() { Style::default().fg(Color::Green).add_modifier(Modifier::BOLD) } else { Style::default() }).alignment(Alignment::Center), chunks[2]);
+    f.render_widget(Paragraph::new(footer_text).style(if app.status_message.is_some() { Style::default().fg(Color::Green).add_modifier(Modifier::BOLD) } else if app.is_searching { Style::default().fg(Color::Yellow) } else { Style::default() }).alignment(Alignment::Center), chunks[2]);
 }
