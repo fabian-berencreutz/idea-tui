@@ -14,7 +14,18 @@ use ratatui::{
 use serde_derive::{Serialize, Deserialize};
 use std::{error::Error, io, fs, path::PathBuf, process, time::{Instant, Duration}};
 
-#[derive(PartialEq)]
+// Catppuccin Mocha Colors
+const MOCHA_MAUVE: Color = Color::Rgb(203, 166, 247);
+const MOCHA_BLUE: Color = Color::Rgb(137, 180, 250);
+const MOCHA_PEACH: Color = Color::Rgb(250, 179, 135);
+const MOCHA_GREEN: Color = Color::Rgb(166, 227, 161);
+const MOCHA_YELLOW: Color = Color::Rgb(249, 226, 175);
+const MOCHA_RED: Color = Color::Rgb(243, 139, 168);
+const MOCHA_TEXT: Color = Color::Rgb(205, 214, 244);
+const MOCHA_OVERLAY: Color = Color::Rgb(108, 112, 134);
+const MOCHA_SURFACE: Color = Color::Rgb(49, 50, 68);
+
+#[derive(PartialEq, Clone)]
 enum AppMode {
     MainMenu,
     CategorySelection,
@@ -22,7 +33,7 @@ enum AppMode {
     InputUrl,
     CloneCategory,
     Favorites,
-    ConfirmOpen, // New mode for confirmation
+    ConfirmOpen,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -52,7 +63,7 @@ struct ProjectInfo {
 
 struct App {
     mode: AppMode,
-    previous_mode: Option<AppMode>, // To return after confirm
+    previous_mode: Option<AppMode>,
     config: Config,
     menu_items: Vec<&'static str>,
     menu_state: ListState,
@@ -65,7 +76,7 @@ struct App {
     status_message: Option<(String, Instant)>,
     search_query: String,
     is_searching: bool,
-    pending_project: Option<ProjectInfo>, // Project waiting for confirm
+    pending_project: Option<ProjectInfo>,
 }
 
 impl App {
@@ -270,7 +281,7 @@ impl App {
                     if i < filtered.len() {
                         let proj = filtered[i];
                         self.pending_project = Some(ProjectInfo { name: proj.name.clone(), path: proj.path.clone(), git_branch: None, has_changes: false });
-                        self.previous_mode = Some(if self.mode == AppMode::Favorites { AppMode::Favorites } else { AppMode::ProjectSelection });
+                        self.previous_mode = Some(self.mode.clone());
                         self.mode = AppMode::ConfirmOpen;
                     }
                 }
@@ -384,7 +395,11 @@ where <B as Backend>::Error: 'static {
                 } else if app.is_searching {
                     match key.code {
                         KeyCode::Enter => { app.is_searching = false; }
-                        KeyCode::Char(c) => { app.search_query.push(c); if let AppMode::CategorySelection | AppMode::CloneCategory = app.mode { app.category_state.select(Some(0)); } else { app.project_state.select(Some(0)); } }
+                        KeyCode::Char(c) => { 
+                            app.search_query.push(c); 
+                            if let AppMode::CategorySelection | AppMode::CloneCategory = app.mode { app.category_state.select(Some(0)); } 
+                            else { app.project_state.select(Some(0)); } 
+                        }
                         KeyCode::Backspace => { app.search_query.pop(); }
                         KeyCode::Esc => { app.is_searching = false; app.search_query.clear(); }
                         _ => {}
@@ -393,13 +408,7 @@ where <B as Backend>::Error: 'static {
                     match key.code {
                         KeyCode::Enter => { app.on_enter()?; }
                         KeyCode::Char(c) => { app.input.push(c); }
-                        KeyCode::Backspace => { 
-                            if app.input.is_empty() {
-                                app.mode = AppMode::MainMenu;
-                            } else {
-                                app.input.pop(); 
-                            }
-                        }
+                        KeyCode::Backspace => { if app.input.is_empty() { app.mode = AppMode::MainMenu; } else { app.input.pop(); } }
                         KeyCode::Esc => { app.mode = AppMode::MainMenu; }
                         _ => {}
                     }
@@ -433,80 +442,76 @@ fn ui(f: &mut Frame, app: &mut App) {
         AppMode::CloneCategory => " Select Category to Clone into ".to_string(),
         AppMode::Favorites => " Favorite Projects ".to_string(),
     };
-    f.render_widget(Paragraph::new(title_text).style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).alignment(Alignment::Center).block(Block::default().borders(Borders::ALL)), chunks[0]);
+    f.render_widget(Paragraph::new(title_text).style(Style::default().fg(MOCHA_MAUVE).add_modifier(Modifier::BOLD)).alignment(Alignment::Center).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(MOCHA_MAUVE))), chunks[0]);
 
     match app.mode {
         AppMode::MainMenu | AppMode::ConfirmOpen => {
-            let items: Vec<ListItem> = app.menu_items.iter().map(|i| ListItem::new(*i).style(Style::default().fg(Color::Rgb(255, 255, 255)))).collect();
-            f.render_stateful_widget(List::new(items).block(Block::default().title(" Actions ").borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan)).highlight_symbol("> "), chunks[1], &mut app.menu_state);
+            let items: Vec<ListItem> = app.menu_items.iter().map(|i| ListItem::new(*i).style(Style::default().fg(MOCHA_TEXT))).collect();
+            f.render_stateful_widget(List::new(items).block(Block::default().title(" Actions ").borders(Borders::ALL).border_style(Style::default().fg(MOCHA_MAUVE))).highlight_style(Style::default().fg(MOCHA_PEACH)).highlight_symbol("> "), chunks[1], &mut app.menu_state);
         }
         AppMode::CategorySelection | AppMode::CloneCategory => {
             let filtered = app.get_filtered_categories();
             let items: Vec<ListItem> = if filtered.is_empty() {
-                vec![ListItem::new("  No results found").style(Style::default().fg(Color::Red).add_modifier(Modifier::ITALIC))]
+                vec![ListItem::new("  No results found").style(Style::default().fg(MOCHA_RED).add_modifier(Modifier::ITALIC))]
             } else {
-                filtered.iter().map(|c| ListItem::new(format!(" {}", c)).style(Style::default().fg(Color::Rgb(255, 255, 255)))).collect()
+                filtered.iter().map(|c| ListItem::new(format!(" {}", c)).style(Style::default().fg(MOCHA_TEXT))).collect()
             };
-            f.render_stateful_widget(List::new(items).block(Block::default().title(" Categories ").borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).highlight_symbol("> "), chunks[1], &mut app.category_state);
+            f.render_stateful_widget(List::new(items).block(Block::default().title(" Categories ").borders(Borders::ALL).border_style(Style::default().fg(MOCHA_MAUVE))).highlight_style(Style::default().fg(MOCHA_PEACH)).highlight_symbol("> "), chunks[1], &mut app.category_state);
         }
         AppMode::ProjectSelection | AppMode::Favorites => {
             let query = app.search_query.to_lowercase();
             let filtered: Vec<&ProjectInfo> = app.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).collect();
             let rows: Vec<Row> = if filtered.is_empty() {
-                vec![Row::new(vec![Cell::from("  No results found").style(Style::default().fg(Color::Red).add_modifier(Modifier::ITALIC))])]
+                vec![Row::new(vec![Cell::from("  No results found").style(Style::default().fg(MOCHA_RED).add_modifier(Modifier::ITALIC))])]
             } else {
                 filtered.iter().enumerate().map(|(idx, p)| {
                     let is_selected = app.project_state.selected() == Some(idx);
-                    let name_style = if is_selected { Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::Rgb(255, 255, 255)) };
+                    let name_style = if is_selected { Style::default().fg(MOCHA_BLUE).add_modifier(Modifier::BOLD) } else { Style::default().fg(MOCHA_TEXT) };
                     let name_cell = Cell::from(p.name.clone()).style(name_style);
                     let git_status = if let Some(branch) = &p.git_branch {
-                        let mut spans = vec![Span::styled("", Style::default().fg(Color::Green))];
-                        if p.has_changes { spans[0] = Span::styled("", Style::default().fg(Color::Yellow)); }
-                        spans.push(Span::styled(format!("  {}", branch), Style::default().fg(Color::Rgb(100, 100, 100))));
+                        let mut spans = vec![Span::styled("", Style::default().fg(MOCHA_GREEN))];
+                        if p.has_changes { spans[0] = Span::styled("", Style::default().fg(MOCHA_YELLOW)); }
+                        spans.push(Span::styled(format!("  {}", branch), Style::default().fg(MOCHA_OVERLAY)));
                         Line::from(spans)
-                    } else { Line::from(vec![Span::styled(" [no git]", Style::default().fg(Color::Rgb(60, 60, 60)))]) };
+                    } else { Line::from(vec![Span::styled(" [no git]", Style::default().fg(MOCHA_OVERLAY))]) };
                     let is_fav = app.config.favorites.contains(&p.path.to_str().unwrap_or("").to_string());
-                    let fav_cell = Cell::from(" ").style(Style::default().fg(if is_fav { Color::Yellow } else { Color::Rgb(60, 60, 60) }));
+                    let fav_cell = Cell::from(" ").style(Style::default().fg(if is_fav { MOCHA_YELLOW } else { MOCHA_SURFACE }));
                     Row::new(vec![Cell::from(name_cell), Cell::from(git_status), fav_cell])
                 }).collect()
             };
             let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
             let table = Table::new(rows, [Constraint::Min(30), Constraint::Length(30), Constraint::Length(5)])
-                .header(Row::new(vec![Cell::from("Name"), Cell::from("Git Status"), Cell::from("")])
-                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).height(1).bottom_margin(1))
-                .block(Block::default().title(title).borders(Borders::ALL))
-                .highlight_symbol("> ")
-                .row_highlight_style(Style::default().bg(Color::Rgb(40, 40, 40))); // Adds a dark grey background to the selected row
-
+                .header(Row::new(vec![Cell::from("Name"), Cell::from("Git Status"), Cell::from("")]).style(Style::default().fg(MOCHA_MAUVE).add_modifier(Modifier::BOLD)).height(1).bottom_margin(1))
+                .block(Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(MOCHA_MAUVE)))
+                .highlight_symbol("> ").row_highlight_style(Style::default().bg(MOCHA_SURFACE));
             f.render_stateful_widget(table, chunks[1], &mut app.project_state);
         }
         AppMode::InputUrl => {
-            let content = if app.input.is_empty() { Line::from(vec![Span::styled("Type or paste Git URL here...", Style::default().fg(Color::Rgb(80, 80, 80)).add_modifier(Modifier::ITALIC))]) } 
-            else { Line::from(vec![Span::styled(&app.input, Style::default().fg(Color::Yellow))]) };
-            f.render_widget(Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(" Git Repository URL ").border_style(Style::default().fg(Color::Yellow))), chunks[1]);
+            let content = if app.input.is_empty() { Line::from(vec![Span::styled("Type or paste Git URL here...", Style::default().fg(MOCHA_OVERLAY).add_modifier(Modifier::ITALIC))]) } 
+            else { Line::from(vec![Span::styled(&app.input, Style::default().fg(MOCHA_YELLOW))]) };
+            f.render_widget(Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(" Git Repository URL ").border_style(Style::default().fg(MOCHA_YELLOW))), chunks[1]);
         }
     }
 
     if app.mode == AppMode::ConfirmOpen {
         if let Some(proj) = &app.pending_project {
             let area = centered_rect(60, 20, f.area());
-            f.render_widget(Clear, area); // This clears the background
-            let block = Block::default().title(" Confirm ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow));
+            f.render_widget(Clear, area);
+            let block = Block::default().title(" Confirm ").borders(Borders::ALL).border_style(Style::default().fg(MOCHA_YELLOW));
             let text = format!("\nOpen {} in IntelliJ?\n\n(y)es / (n)o", proj.name);
-            let p = Paragraph::new(text).block(block).alignment(Alignment::Center);
-            f.render_widget(p, area);
+            f.render_widget(Paragraph::new(text).block(block).alignment(Alignment::Center).style(Style::default().fg(MOCHA_TEXT)), area);
         }
     }
 
     let footer_text = if app.is_searching { format!("/{} (Press Enter to browse results)", app.search_query) } else if let Some((msg, _)) = &app.status_message { msg.clone() } else {
         match app.mode {
             AppMode::ConfirmOpen => "y: Yes  •  n: No / Cancel".to_string(),
-            AppMode::MainMenu => "Enter / Right: Select  •  q: Quit".to_string(),
+            AppMode::MainMenu => "Enter: Select  •  q: Quit".to_string(),
             AppMode::CategorySelection => "/: Search  •  Enter / Right: View Projects  •  Backspace: Back".to_string(),
-            _ => "/: Search  •  Enter / Right: Open  •  f: Favorite  •  Backspace: Back".to_string(),
+            _ => "/: Search  •  Enter: Open  •  f: Favorite  •  Backspace: Back".to_string(),
         }
     };
-    f.render_widget(Paragraph::new(footer_text).style(if app.status_message.is_some() { Style::default().fg(Color::Green).add_modifier(Modifier::BOLD) } else { Style::default() }).alignment(Alignment::Center), chunks[2]);
+    f.render_widget(Paragraph::new(footer_text).style(if app.status_message.is_some() { Style::default().fg(MOCHA_GREEN).add_modifier(Modifier::BOLD) } else if app.is_searching { Style::default().fg(Color::Yellow) } else { Style::default().fg(MOCHA_TEXT) }).alignment(Alignment::Center), chunks[2]);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
