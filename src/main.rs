@@ -33,7 +33,7 @@ enum AppMode {
     InputUrl,
     CloneCategory,
     Favorites,
-    Recent, // New mode
+    Recent,
     ConfirmOpen,
 }
 
@@ -44,7 +44,7 @@ struct Config {
     #[serde(default)]
     favorites: Vec<String>,
     #[serde(default)]
-    recent_projects: Vec<String>, // New: Stores recently opened project paths
+    recent_projects: Vec<String>,
 }
 
 impl Default for Config {
@@ -93,7 +93,7 @@ impl App {
             mode: AppMode::MainMenu,
             previous_mode: None,
             config,
-            menu_items: vec!["Favorites", "Recent Projects", "Open Existing Project", "Open IntelliJ IDEA", "Clone Repository"],
+            menu_items: vec!["Favorites", "Recent Projects", "Open Existing Project", "Clone Repository", "Open IntelliJ IDEA"],
             menu_state,
             categories: Vec::new(),
             category_state: ListState::default(),
@@ -114,11 +114,8 @@ impl App {
     }
 
     fn add_to_recent(&mut self, path: String) {
-        // Remove if already exists to move it to the top
         self.config.recent_projects.retain(|x| x != &path);
-        // Insert at beginning
         self.config.recent_projects.insert(0, path);
-        // Keep only last 10
         self.config.recent_projects.truncate(10);
         let _ = self.save_config();
     }
@@ -173,7 +170,6 @@ impl App {
                 recent.push(ProjectInfo { name, path, git_branch: branch, has_changes: changes });
             }
         }
-        // Don't sort recent projects, keep the chronological order
         self.projects = recent;
         self.project_state.select(if self.projects.is_empty() { None } else { Some(0) });
         self.selected_category = None;
@@ -283,12 +279,12 @@ impl App {
                     Some(0) => { self.load_favorites(); self.mode = AppMode::Favorites; }
                     Some(1) => { self.load_recent(); self.mode = AppMode::Recent; }
                     Some(2) => { self.load_categories(); self.mode = AppMode::CategorySelection; }
-                    Some(3) => {
+                    Some(3) => { self.input.clear(); self.mode = AppMode::InputUrl; }
+                    Some(4) => {
                         self.pending_project = Some(ProjectInfo { name: "IntelliJ IDEA".to_string(), path: PathBuf::from("IDE"), git_branch: None, has_changes: false });
                         self.previous_mode = Some(AppMode::MainMenu);
                         self.mode = AppMode::ConfirmOpen;
                     }
-                    Some(4) => { self.input.clear(); self.mode = AppMode::InputUrl; }
                     _ => {}
                 }
                 Ok(false)
@@ -345,7 +341,7 @@ impl App {
             } else {
                 let path_str = proj.path.to_str().unwrap_or("").to_string();
                 let name = proj.name.clone();
-                self.add_to_recent(path_str.clone()); // Save to history
+                self.add_to_recent(path_str.clone());
                 process::Command::new(&self.config.idea_path).arg(path_str).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
                 self.status_message = Some((format!("Launched {}!", name), Instant::now()));
             }
