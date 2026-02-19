@@ -29,7 +29,7 @@ struct Config {
     base_dir: String,
     idea_path: String,
     #[serde(default)]
-    favorites: Vec<String>, // Stores paths to favorite projects
+    favorites: Vec<String>,
 }
 
 impl Default for Config {
@@ -411,7 +411,7 @@ fn ui(f: &mut Frame, app: &mut App) {
             let items: Vec<ListItem> = if filtered.is_empty() {
                 vec![ListItem::new("  No results found").style(Style::default().fg(Color::Red).add_modifier(Modifier::ITALIC))]
             } else {
-                filtered.iter().map(|c| ListItem::new(format!("📁 {}", c)).style(Style::default().fg(Color::Rgb(255, 255, 255)))).collect()
+                filtered.iter().map(|c| ListItem::new(format!(" {}", c)).style(Style::default().fg(Color::Rgb(255, 255, 255)))).collect()
             };
             f.render_stateful_widget(List::new(items).block(Block::default().title(" Categories ").borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).highlight_symbol("> "), chunks[1], &mut app.category_state);
         }
@@ -425,17 +425,14 @@ fn ui(f: &mut Frame, app: &mut App) {
                     let is_selected = app.project_state.selected() == Some(idx);
                     let name_style = if is_selected { Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::Rgb(255, 255, 255)) };
                     let mut spans = Vec::new();
-                    
                     let path_str = p.path.to_str().unwrap_or("");
                     if app.config.favorites.contains(&path_str.to_string()) {
-                        spans.push(Span::styled("★ ", Style::default().fg(Color::Yellow)));
+                        spans.push(Span::styled(" ", Style::default().fg(Color::Yellow)));
                     }
-
                     spans.push(Span::styled(p.name.clone(), name_style));
-
                     if let Some(branch) = &p.git_branch {
-                        spans.push(Span::styled(format!(" [{}]", branch), Style::default().fg(Color::Rgb(100, 100, 100))));
-                        if p.has_changes { spans.push(Span::styled(" *", Style::default().fg(Color::Yellow))); } else { spans.push(Span::styled(" ✓", Style::default().fg(Color::Green))); }
+                        spans.push(Span::styled(format!("  {}", branch), Style::default().fg(Color::Rgb(100, 100, 100))));
+                        if p.has_changes { spans.push(Span::styled(" ", Style::default().fg(Color::Yellow))); } else { spans.push(Span::styled(" ", Style::default().fg(Color::Green))); }
                     }
                     ListItem::new(Line::from(spans))
                 }).collect()
