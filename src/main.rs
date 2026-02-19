@@ -10,6 +10,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     Frame, Terminal,
 };
+use serde_derive::{Serialize, Deserialize};
 use std::{error::Error, io, fs, path::PathBuf, process, time::{Instant, Duration}};
 
 #[derive(PartialEq)]
@@ -21,9 +22,24 @@ enum AppMode {
     CloneCategory,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct Config {
+    base_dir: String,
+    idea_path: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            base_dir: "/home/fabian/dev".to_string(),
+            idea_path: "/opt/intellij-idea-ultimate-edition/bin/idea".to_string(),
+        }
+    }
+}
+
 struct App {
     mode: AppMode,
-    base_dir: PathBuf,
+    config: Config,
     menu_items: Vec<&'static str>,
     menu_state: ListState,
     categories: Vec<String>,
@@ -38,12 +54,12 @@ struct App {
 }
 
 impl App {
-    fn new(base_dir: PathBuf) -> App {
+    fn new(config: Config) -> App {
         let mut menu_state = ListState::default();
         menu_state.select(Some(0));
         App {
             mode: AppMode::MainMenu,
-            base_dir,
+            config,
             menu_items: vec!["Open Existing Project", "Create New Project", "Clone Repository"],
             menu_state,
             categories: Vec::new(),
@@ -60,7 +76,7 @@ impl App {
 
     fn load_categories(&mut self) {
         let mut cats = Vec::new();
-        if let Ok(entries) = fs::read_dir(&self.base_dir) {
+        if let Ok(entries) = fs::read_dir(&self.config.base_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
@@ -77,7 +93,7 @@ impl App {
 
     fn load_projects(&mut self, category: String) {
         let mut projs = Vec::new();
-        let cat_path = self.base_dir.join(&category);
+        let cat_path = PathBuf::from(&self.config.base_dir).join(&category);
         if let Ok(entries) = fs::read_dir(cat_path) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -166,7 +182,7 @@ impl App {
                 match self.menu_state.selected() {
                     Some(0) => { self.load_categories(); self.mode = AppMode::CategorySelection; }
                     Some(1) => {
-                        process::Command::new("/opt/intellij-idea-ultimate-edition/bin/idea")
+                        process::Command::new(&self.config.idea_path)
                             .arg("nosplash").stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
                         self.status_message = Some(("Opening Project Wizard...".to_string(), Instant::now()));
                     }
@@ -191,8 +207,8 @@ impl App {
                 if let (Some(cat), Some(i)) = (&self.selected_category, self.project_state.selected()) {
                     if i < filtered.len() {
                         let proj = &filtered[i];
-                        let path = self.base_dir.join(cat).join(proj);
-                        process::Command::new("/opt/intellij-idea-ultimate-edition/bin/idea")
+                        let path = PathBuf::from(&self.config.base_dir).join(cat).join(proj);
+                        process::Command::new(&self.config.idea_path)
                             .arg(path.to_str().unwrap_or("")).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
                         self.status_message = Some((format!("Launched {}!", proj), Instant::now()));
                     }
@@ -221,7 +237,7 @@ impl App {
     }
 
     fn clone_repo(&mut self, category: String) -> Result<(), Box<dyn Error>> {
-        let clone_dir = self.base_dir.join(&category);
+        let clone_dir = PathBuf::from(&self.config.base_dir).join(&category);
         let url = self.input.clone();
         let project_name = url.split('/').last()
             .and_then(|s| s.strip_suffix(".git").or(Some(s)))
@@ -240,7 +256,7 @@ impl App {
 
         if status.success() {
             let project_path = clone_dir.join(project_name);
-            process::Command::new("/opt/intellij-idea-ultimate-edition/bin/idea")
+            process::Command::new(&self.config.idea_path)
                 .arg(project_path.to_str().unwrap_or(""))
                 .stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
             self.status_message = Some((format!("Cloned and opened {}!", project_name), Instant::now()));
@@ -272,12 +288,14 @@ impl App {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let cfg: Config = confy::load("idea-tui", None)?;
+    
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let mut app = App::new(PathBuf::from("/home/fabian/dev"));
+    let mut app = App::new(cfg);
     let res = run_app(&mut terminal, &mut app);
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
@@ -295,14 +313,11 @@ where <B as Backend>::Error: 'static {
             if let Event::Key(key) = event::read()? {
                 if app.is_searching {
                     match key.code {
-                        KeyCode::Enter => { app.is_searching = false; } // Finish searching, don't execute
+                        KeyCode::Enter => { app.is_searching = false; }
                         KeyCode::Char(c) => { 
                             app.search_query.push(c); 
-                            if let AppMode::CategorySelection | AppMode::CloneCategory = app.mode { 
-                                app.category_state.select(Some(0)); 
-                            } else { 
-                                app.project_state.select(Some(0)); 
-                            } 
+                            if let AppMode::CategorySelection | AppMode::CloneCategory = app.mode { app.category_state.select(Some(0)); } 
+                            else { app.project_state.select(Some(0)); } 
                         }
                         KeyCode::Backspace => { app.search_query.pop(); }
                         KeyCode::Esc => { app.is_searching = false; app.search_query.clear(); }
@@ -352,22 +367,20 @@ fn ui(f: &mut Frame, app: &mut App) {
             let items: Vec<ListItem> = app.menu_items.iter().map(|i| ListItem::new(*i).style(Style::default().fg(Color::Rgb(255, 255, 255)))).collect();
             f.render_stateful_widget(List::new(items).block(Block::default().title(" Actions ").borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan)).highlight_symbol("> "), chunks[1], &mut app.menu_state);
         }
-                AppMode::CategorySelection | AppMode::CloneCategory | AppMode::ProjectSelection => {
-                    let filtered = app.get_filtered_items();
-                    let items: Vec<ListItem> = if filtered.is_empty() {
-                        vec![ListItem::new("  No results found").style(Style::default().fg(Color::Red).add_modifier(Modifier::ITALIC))]
-                    } else {
-                        filtered.iter().map(|item| {
-                            let display = if app.mode == AppMode::ProjectSelection { item.clone() } else { format!("📁 {}", item) };
-                            ListItem::new(display).style(Style::default().fg(Color::Rgb(255, 255, 255)))
-                        }).collect()
-                    };
-                    
-                    let title = if app.mode == AppMode::ProjectSelection { " Projects " } else { " Categories " };
-                    let state = if app.mode == AppMode::ProjectSelection { &mut app.project_state } else { &mut app.category_state };
-                    
-                    f.render_stateful_widget(List::new(items).block(Block::default().title(title).borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).highlight_symbol("> "), chunks[1], state);
-                }
+        AppMode::CategorySelection | AppMode::CloneCategory | AppMode::ProjectSelection => {
+            let filtered = app.get_filtered_items();
+            let items: Vec<ListItem> = if filtered.is_empty() {
+                vec![ListItem::new("  No results found").style(Style::default().fg(Color::Red).add_modifier(Modifier::ITALIC))]
+            } else {
+                filtered.iter().map(|item| {
+                    let display = if app.mode == AppMode::ProjectSelection { item.clone() } else { format!("📁 {}", item) };
+                    ListItem::new(display).style(Style::default().fg(Color::Rgb(255, 255, 255)))
+                }).collect()
+            };
+            let title = if app.mode == AppMode::ProjectSelection { " Projects " } else { " Categories " };
+            let state = if app.mode == AppMode::ProjectSelection { &mut app.project_state } else { &mut app.category_state };
+            f.render_stateful_widget(List::new(items).block(Block::default().title(title).borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).highlight_symbol("> "), chunks[1], state);
+        }
         AppMode::InputUrl => {
             f.render_widget(Paragraph::new(app.input.as_str()).style(Style::default().fg(Color::Yellow)).block(Block::default().borders(Borders::ALL).title(" Git Repository URL ")), chunks[1]);
         }
