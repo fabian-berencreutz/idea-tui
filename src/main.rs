@@ -9,6 +9,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     Frame, Terminal,
+    text::{Line, Span},
 };
 use serde_derive::{Serialize, Deserialize};
 use std::{error::Error, io, fs, path::PathBuf, process, time::{Instant, Duration}};
@@ -289,7 +290,6 @@ impl App {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cfg: Config = confy::load("idea-tui", None)?;
-    
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -382,7 +382,16 @@ fn ui(f: &mut Frame, app: &mut App) {
             f.render_stateful_widget(List::new(items).block(Block::default().title(title).borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).highlight_symbol("> "), chunks[1], state);
         }
         AppMode::InputUrl => {
-            f.render_widget(Paragraph::new(app.input.as_str()).style(Style::default().fg(Color::Yellow)).block(Block::default().borders(Borders::ALL).title(" Git Repository URL ")), chunks[1]);
+            let content = if app.input.is_empty() {
+                Line::from(vec![
+                    Span::styled("Type or paste Git URL here...", Style::default().fg(Color::Rgb(80, 80, 80)).add_modifier(Modifier::ITALIC))
+                ])
+            } else {
+                Line::from(vec![
+                    Span::styled(&app.input, Style::default().fg(Color::Yellow))
+                ])
+            };
+            f.render_widget(Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(" Git Repository URL ").border_style(Style::default().fg(Color::Yellow))), chunks[1]);
         }
     }
 
