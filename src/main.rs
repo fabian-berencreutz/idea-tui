@@ -18,7 +18,6 @@ use std::{error::Error, io, fs, path::PathBuf, process, time::{Instant, Duration
 const MOCHA_TEAL: Color = Color::Rgb(148, 226, 213); // New: For borders and arrows
 const MOCHA_MAUVE: Color = Color::Rgb(203, 166, 247);
 const MOCHA_BLUE: Color = Color::Rgb(137, 180, 250);
-const MOCHA_PINK: Color = Color::Rgb(245, 194, 231);
 const MOCHA_GREEN: Color = Color::Rgb(166, 227, 161);
 const MOCHA_YELLOW: Color = Color::Rgb(249, 226, 175);
 const MOCHA_RED: Color = Color::Rgb(243, 139, 168);
@@ -478,7 +477,7 @@ fn ui(f: &mut Frame, app: &mut App) {
                     let name_style = if is_selected { Style::default().fg(MOCHA_BLUE).add_modifier(Modifier::BOLD) } else { Style::default().fg(MOCHA_TEXT) };
                     let name_cell = Cell::from(p.name.clone()).style(name_style);
                     let git_status = if let Some(branch) = &p.git_branch {
-                        let mut spans = vec![Span::styled("", Style::default().fg(MOCHA_GREEN))];
+                        let mut spans = vec![Span::styled("", Style::default().fg(MOCHA_TEAL))];
                         if p.has_changes { spans[0] = Span::styled("", Style::default().fg(MOCHA_YELLOW)); }
                         spans.push(Span::styled("  ", Style::default().fg(MOCHA_OVERLAY)));
                         spans.push(Span::styled(branch, Style::default().fg(MOCHA_MAUVE)));
