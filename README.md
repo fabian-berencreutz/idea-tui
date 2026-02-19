@@ -1,58 +1,71 @@
-# idea-tui
+# idea-tui 🚀
 
-A high-performance, minimalist terminal-based project manager and launcher for IntelliJ IDEA Ultimate Edition.
+A high-performance, minimalist terminal-based project manager and launcher for IntelliJ IDEA Ultimate Edition, featuring a beautiful Catppuccin Mocha theme.
 
-Designed to simplify the workflow for developers who manage multiple projects across different categories (Java, Rust, etc.) and frequently clone repositories from GitHub.
+## ✨ Features
 
-## Features
+- **📂 Structured Project Browser**: Navigate through your projects by category (e.g., `~/dev/java`).
+- **⭐️ Favorites**: Mark your most important projects with `f` for instant access.
+- **🕒 Recently Opened**: Automatically tracks and lists your last 10 projects.
+- **🔍 Smart Search**: Press `/` to filter any list. Confirm with `Enter` to browse the results.
+- **🌿 Real-time Git Status**: See your current branch (``), checkmarks (``) for clean repos, and dots (``) for pending changes.
+- **🖥️ Quick Terminal**: Press `t` to instantly open a new terminal window in the project's directory.
+- **🛡️ Confirmation Safety**: A built-in popup ensures you only launch IntelliJ when you actually mean to.
+- **🎨 Catppuccin Mocha**: Beautifully themed with Teal borders, Blue highlights, and Peach accents.
+- **⚙️ Fully Configurable**: Customize your paths and terminal commands via a simple TOML file.
 
-- **📂 Structured Project Browser**: Navigate through your projects by category (e.g., `~/dev/java`, `~/dev/rust`).
-- **🔍 Instant Search**: Press `/` to filter through categories or projects instantly.
-- **🚀 One-Click Launch**: Open any directory in IntelliJ directly with a single keystroke.
-- **🔗 Smart Git Cloning**: Paste a repository URL, select a category, and let the app clone and open it for you automatically.
-- **🔐 Private Repo Support**: Seamlessly integrates with GitHub CLI (`gh`) to handle private repositories without manual password entry.
-- **⚙️ Configurable**: Easily customize your project paths and IntelliJ location via a simple config file.
-- **⌨️ Keyboard Centric**: Full support for arrow keys and Vim-style navigation (`h`, `j`, `k`, `l`).
+## 🛠️ Prerequisites
 
-## Installation
+1.  **IntelliJ IDEA Ultimate**: Ensure it's installed (standard path: `/opt/intellij-idea-ultimate-edition/bin/idea`).
+2.  **Nerd Fonts**: Required for icons (``, ``, ``, etc.).
+3.  **GitHub CLI (Optional)**: For seamless private repo cloning:
+    ```bash
+    sudo pacman -S github-cli
+    gh auth login
+    ```
+
+## 🚀 Installation
 
 1.  Clone this repository.
 2.  Build the binary:
     ```bash
     cargo build --release
     ```
-3.  Add an alias to your `~/.zshrc` (or `.bashrc`) for easy access:
+3.  Add an alias to your `~/.zshrc` (or `.bashrc`):
     ```bash
     alias idea-tui='/home/fabian/dev/rust/idea-tui/target/release/idea-tui'
     ```
 
-## Configuration
-
-On the first run, `idea-tui` creates a configuration file at:
-`~/.config/idea-tui/default-config.toml`
-
-You can edit this file to match your system:
-```toml
-base_dir = "/home/your-user/dev"
-idea_path = "/usr/bin/idea"
-```
-
-## Navigation & Shortcuts
+## ⌨️ Shortcuts
 
 | Key | Action |
 | :--- | :--- |
-| **Arrows / hjkl** | Navigate through menus and lists |
-| **Enter** | Select action / Enter category / Open project |
-| **/** | Start searching / filtering (in categories/projects) |
-| **Backspace / h** | Go back to the previous menu/category |
-| **q** | Quit the application |
-| **Esc** | Clear search or return to the Main Menu |
+| **Arrows / hjkl** | Navigate menus and lists |
+| **Enter / l** | Select / Enter / Trigger Open |
+| **Backspace / h** | Go back / Cancel |
+| **/** | Start search (Press **Enter** to browse results) |
+| **f** | Toggle Favorite |
+| **t** | Open Quick Terminal |
+| **?** | Toggle Help Screen |
+| **q** | Quit |
+| **Esc** | Clear Search / Main Menu / Close Popups |
 
-## Prerequisites
+## ⚙️ Configuration
 
-1.  **IntelliJ IDEA Ultimate**: The app is pre-configured for the standard Arch Linux path.
-2.  **GitHub CLI (Optional)**: To clone private repositories effortlessly:
-    ```bash
-    sudo pacman -S github-cli
-    gh auth login
-    ```
+On first run, `idea-tui` creates a config file at:
+`~/.config/idea-tui/default-config.toml`
+
+```toml
+base_dir = "/home/fabian/dev"
+idea_path = "/opt/intellij-idea-ultimate-edition/bin/idea"
+terminal_command = "kitty --directory" # Command to launch terminal + path
+```
+
+## 🧪 Development
+
+This project is built with **Rust** and **Ratatui**.
+
+```bash
+cargo run   # Run in debug mode
+cargo build # Build binary
+```
