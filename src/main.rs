@@ -393,7 +393,13 @@ where <B as Backend>::Error: 'static {
                     match key.code {
                         KeyCode::Enter => { app.on_enter()?; }
                         KeyCode::Char(c) => { app.input.push(c); }
-                        KeyCode::Backspace => { app.input.pop(); }
+                        KeyCode::Backspace => { 
+                            if app.input.is_empty() {
+                                app.mode = AppMode::MainMenu;
+                            } else {
+                                app.input.pop(); 
+                            }
+                        }
                         KeyCode::Esc => { app.mode = AppMode::MainMenu; }
                         _ => {}
                     }
