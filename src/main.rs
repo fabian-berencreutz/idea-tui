@@ -445,14 +445,28 @@ fn ui(f: &mut Frame, app: &mut App) {
             };
 
             let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
-            let table = Table::new(rows, [
-                Constraint::Percentage(55), // Name
-                Constraint::Percentage(30), // Branch
-                Constraint::Length(3),      // Status (Check/Dot)
-                Constraint::Length(2),      // Favorite
+            
+            // Header with matching alignment
+            let header = Row::new(vec![
+                Cell::from("  Name"),
+                Cell::from("Branch"),
+                Cell::from("Status"),
+                Cell::from("Fav"),
             ])
+            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .height(1)
+            .bottom_margin(1);
+
+            let table = Table::new(rows, [
+                Constraint::Percentage(50), 
+                Constraint::Percentage(30), 
+                Constraint::Length(8),      
+                Constraint::Length(5),      
+            ])
+            .header(header)
             .block(Block::default().title(title).borders(Borders::ALL))
-            .highlight_symbol("> ");
+            .highlight_symbol("> ")
+            .highlight_style(Style::default());
 
             f.render_stateful_widget(table, chunks[1], &mut app.project_state);
         }
