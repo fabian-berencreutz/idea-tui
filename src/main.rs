@@ -431,15 +431,19 @@ fn ui(f: &mut Frame, app: &mut App) {
                     let name_cell = Cell::from(p.name.clone()).style(name_style);
                     
                     let git_status = if let Some(branch) = &p.git_branch {
-                        let mut spans = vec![Span::styled(format!(" {}", branch), Style::default().fg(Color::Rgb(100, 100, 100)))];
-                        if p.has_changes { spans.push(Span::styled(" ", Style::default().fg(Color::Yellow))); } 
-                        else { spans.push(Span::styled(" ", Style::default().fg(Color::Green))); }
+                        let mut spans = Vec::new();
+                        if p.has_changes { 
+                            spans.push(Span::styled("", Style::default().fg(Color::Yellow))); 
+                        } else { 
+                            spans.push(Span::styled("", Style::default().fg(Color::Green))); 
+                        }
+                        spans.push(Span::styled(format!("  {}", branch), Style::default().fg(Color::Rgb(100, 100, 100))));
                         Line::from(spans)
                     } else { Line::from("") };
 
                     let path_str = p.path.to_str().unwrap_or("");
                     let is_fav = app.config.favorites.contains(&path_str.to_string());
-                    let fav_cell = if is_fav { Cell::from("").style(Style::default().fg(Color::Yellow)) } else { Cell::from("") };
+                    let fav_cell = if is_fav { Cell::from(" ").style(Style::default().fg(Color::Yellow)) } else { Cell::from("") };
 
                     Row::new(vec![Cell::from(name_cell), Cell::from(git_status), fav_cell])
                 }).collect()
