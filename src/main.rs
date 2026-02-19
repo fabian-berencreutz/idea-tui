@@ -411,9 +411,12 @@ fn ui(f: &mut Frame, app: &mut App) {
 
                         let mut spans = vec![Span::styled(p.name.clone(), name_style)];
                         if let Some(branch) = &p.git_branch {
-                            let branch_color = if p.has_changes { Color::Yellow } else { Color::Rgb(100, 100, 100) };
-                            let suffix = if p.has_changes { "*" } else { "" };
-                            spans.push(Span::styled(format!(" [{} {}]", branch, suffix), Style::default().fg(branch_color)));
+                            spans.push(Span::styled(format!(" [{}]", branch), Style::default().fg(Color::Rgb(100, 100, 100))));
+                            if p.has_changes {
+                                spans.push(Span::styled(" *", Style::default().fg(Color::Yellow)));
+                            } else {
+                                spans.push(Span::styled(" ✓", Style::default().fg(Color::Green)));
+                            }
                         }
                         ListItem::new(Line::from(spans))
                     }).collect()
