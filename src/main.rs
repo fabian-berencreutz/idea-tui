@@ -427,46 +427,30 @@ fn ui(f: &mut Frame, app: &mut App) {
                 filtered.iter().enumerate().map(|(idx, p)| {
                     let is_selected = app.project_state.selected() == Some(idx);
                     let name_style = if is_selected { Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::Rgb(255, 255, 255)) };
-                    
                     let name_cell = Cell::from(p.name.clone()).style(name_style);
                     let branch_cell = Cell::from(p.git_branch.as_ref().map(|b| format!(" {}", b)).unwrap_or_default()).style(Style::default().fg(Color::Rgb(100, 100, 100)));
-                    
                     let status_cell = if p.git_branch.is_some() {
                         if p.has_changes { Cell::from("").style(Style::default().fg(Color::Yellow)) } 
                         else { Cell::from("").style(Style::default().fg(Color::Green)) }
                     } else { Cell::from("") };
-
                     let path_str = p.path.to_str().unwrap_or("");
                     let is_fav = app.config.favorites.contains(&path_str.to_string());
                     let fav_cell = if is_fav { Cell::from("").style(Style::default().fg(Color::Yellow)) } else { Cell::from("") };
-
                     Row::new(vec![name_cell, branch_cell, status_cell, fav_cell])
                 }).collect()
             };
 
             let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
-            
-            // Header with matching alignment
-            let header = Row::new(vec![
-                Cell::from("  Name"),
-                Cell::from("Branch"),
-                Cell::from("Status"),
-                Cell::from("Fav"),
-            ])
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-            .height(1)
-            .bottom_margin(1);
+            let header = Row::new(vec![Cell::from("Name"), Cell::from("Branch"), Cell::from("Status"), Cell::from("Fav")])
+                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).height(1).bottom_margin(1);
 
             let table = Table::new(rows, [
-                Constraint::Percentage(50), 
-                Constraint::Percentage(30), 
-                Constraint::Length(8),      
-                Constraint::Length(5),      
+                Constraint::Min(20),
+                Constraint::Length(25),
+                Constraint::Length(10),
+                Constraint::Length(10),
             ])
-            .header(header)
-            .block(Block::default().title(title).borders(Borders::ALL))
-            .highlight_symbol("> ")
-            .highlight_style(Style::default());
+            .header(header).block(Block::default().title(title).borders(Borders::ALL)).highlight_symbol("> ").row_highlight_style(Style::default());
 
             f.render_stateful_widget(table, chunks[1], &mut app.project_state);
         }
