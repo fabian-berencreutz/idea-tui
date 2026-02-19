@@ -139,7 +139,8 @@ impl App {
                         self.status_message = Some((format!("Added {} to favorites", filtered[i].name), Instant::now()));
                     }
                     let _ = self.save_config();
-                    if self.mode == AppMode::Favorites { self.load_favorites(); }
+                    // NOTE: We don't call load_favorites() here anymore.
+                    // The project will remain in the list (with a gray star) until the user leaves the view.
                 }
             }
         }
