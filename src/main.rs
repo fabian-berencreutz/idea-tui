@@ -15,11 +15,11 @@ use serde_derive::{Serialize, Deserialize};
 use std::{error::Error, io, fs, path::PathBuf, process, time::{Instant, Duration}};
 
 // Catppuccin Mocha Colors
-const MOCHA_TEAL: Color = Color::Rgb(148, 226, 213); // New: For borders and arrows
+const MOCHA_TEAL: Color = Color::Rgb(148, 226, 213);
 const MOCHA_MAUVE: Color = Color::Rgb(203, 166, 247);
 const MOCHA_BLUE: Color = Color::Rgb(137, 180, 250);
+const MOCHA_PEACH: Color = Color::Rgb(250, 179, 135);
 const MOCHA_GREEN: Color = Color::Rgb(166, 227, 161);
-const MOCHA_YELLOW: Color = Color::Rgb(249, 226, 175);
 const MOCHA_RED: Color = Color::Rgb(243, 139, 168);
 const MOCHA_TEXT: Color = Color::Rgb(205, 214, 244);
 const MOCHA_OVERLAY: Color = Color::Rgb(108, 112, 134);
@@ -478,26 +478,32 @@ fn ui(f: &mut Frame, app: &mut App) {
                     let name_cell = Cell::from(p.name.clone()).style(name_style);
                     let git_status = if let Some(branch) = &p.git_branch {
                         let mut spans = vec![Span::styled("", Style::default().fg(MOCHA_TEAL))];
-                        if p.has_changes { spans[0] = Span::styled("", Style::default().fg(MOCHA_YELLOW)); }
+                        if p.has_changes { spans[0] = Span::styled("", Style::default().fg(MOCHA_PEACH)); }
                         spans.push(Span::styled("  ", Style::default().fg(MOCHA_OVERLAY)));
                         spans.push(Span::styled(branch, Style::default().fg(MOCHA_MAUVE)));
                         Line::from(spans)
                     } else { Line::from(vec![Span::styled(" [no git]", Style::default().fg(MOCHA_OVERLAY))]) };
                     let is_fav = app.config.favorites.contains(&p.path.to_str().unwrap_or("").to_string());
-                    let fav_cell = Cell::from(" ").style(Style::default().fg(if is_fav { MOCHA_YELLOW } else { MOCHA_SURFACE }));
+                    let fav_cell = Cell::from(" ").style(Style::default().fg(if is_fav { MOCHA_PEACH } else { MOCHA_SURFACE }));
                     Row::new(vec![Cell::from(name_cell), Cell::from(git_status), fav_cell])
                 }).collect()
             };
             let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
+            let header = Row::new(vec![
+                Cell::from("Name").style(Style::default().fg(MOCHA_PEACH).add_modifier(Modifier::BOLD)),
+                Cell::from("Git Status").style(Style::default().fg(MOCHA_PEACH).add_modifier(Modifier::BOLD)),
+                Cell::from(""),
+            ]).height(1).bottom_margin(1);
+
             let table = Table::new(rows, [Constraint::Min(30), Constraint::Length(30), Constraint::Length(5)])
-                .header(Row::new(vec![Cell::from("Name"), Cell::from("Git Status"), Cell::from("")]).style(Style::default().fg(MOCHA_TEAL).add_modifier(Modifier::BOLD)).height(1).bottom_margin(1))
+                .header(header)
                 .block(Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL)))
                 .highlight_symbol(Span::styled("> ", Style::default().fg(MOCHA_BLUE))).row_highlight_style(Style::default().bg(MOCHA_SURFACE));
             f.render_stateful_widget(table, chunks[1], &mut app.project_state);
         }
         AppMode::InputUrl => {
             let content = if app.input.is_empty() { Line::from(vec![Span::styled("Type or paste Git URL here...", Style::default().fg(MOCHA_OVERLAY).add_modifier(Modifier::ITALIC))]) } 
-            else { Line::from(vec![Span::styled(&app.input, Style::default().fg(MOCHA_YELLOW))]) };
+            else { Line::from(vec![Span::styled(&app.input, Style::default().fg(MOCHA_PEACH))]) };
             f.render_widget(Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(" Git Repository URL ").border_style(Style::default().fg(MOCHA_TEAL))), chunks[1]);
         }
     }
@@ -506,7 +512,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         if let Some(proj) = &app.pending_project {
             let area = centered_rect(60, 20, f.area());
             f.render_widget(Clear, area);
-            let block = Block::default().title(" Confirm ").borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL));
+            let block = Block::default().title(" Confirm ").borders(Borders::ALL).border_style(Style::default().fg(MOCHA_PEACH));
             let text = format!("\nOpen {} in IntelliJ?\n\n(y)es / (n)o", proj.name);
             f.render_widget(Paragraph::new(text).block(block).alignment(Alignment::Center).style(Style::default().fg(MOCHA_TEXT)), area);
         }
