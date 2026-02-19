@@ -443,14 +443,15 @@ fn ui(f: &mut Frame, app: &mut App) {
 
                     let path_str = p.path.to_str().unwrap_or("");
                     let is_fav = app.config.favorites.contains(&path_str.to_string());
-                    let fav_cell = if is_fav { Cell::from(" ").style(Style::default().fg(Color::Yellow)) } else { Cell::from("") };
+                    let fav_color = if is_fav { Color::Yellow } else { Color::Rgb(60, 60, 60) };
+                    let fav_cell = Cell::from(" ").style(Style::default().fg(fav_color));
 
                     Row::new(vec![Cell::from(name_cell), Cell::from(git_status), fav_cell])
                 }).collect()
             };
 
             let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
-            let header = Row::new(vec![Cell::from("Name"), Cell::from("Git Status"), Cell::from("Fav")])
+            let header = Row::new(vec![Cell::from("Name"), Cell::from("Git Status"), Cell::from("")])
                 .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).height(1).bottom_margin(1);
 
             let table = Table::new(rows, [
