@@ -439,7 +439,12 @@ fn ui(f: &mut Frame, app: &mut App) {
                         }
                         spans.push(Span::styled(format!("  {}", branch), Style::default().fg(Color::Rgb(100, 100, 100))));
                         Line::from(spans)
-                    } else { Line::from("") };
+                    } else { 
+                        Line::from(vec![
+                            Span::styled(" ", Style::default().fg(Color::Rgb(60, 60, 60))),
+                            Span::styled("[no git]", Style::default().fg(Color::Rgb(60, 60, 60)))
+                        ])
+                    };
 
                     let path_str = p.path.to_str().unwrap_or("");
                     let is_fav = app.config.favorites.contains(&path_str.to_string());
