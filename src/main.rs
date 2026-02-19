@@ -5,7 +5,7 @@ use crossterm::{
 };
 use ratatui::{
     backend::{Backend, CrosstermBackend},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Table, Row, Cell, TableState},
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     Frame, Terminal,
@@ -58,7 +58,7 @@ struct App {
     category_state: ListState,
     selected_category: Option<String>,
     projects: Vec<ProjectInfo>,
-    project_state: ListState,
+    project_state: TableState, // Changed from ListState to TableState
     input: String,
     status_message: Option<(String, Instant)>,
     search_query: String,
@@ -69,6 +69,8 @@ impl App {
     fn new(config: Config) -> App {
         let mut menu_state = ListState::default();
         menu_state.select(Some(0));
+        let mut project_state = TableState::default();
+        project_state.select(Some(0));
         App {
             mode: AppMode::MainMenu,
             config,
@@ -78,7 +80,7 @@ impl App {
             category_state: ListState::default(),
             selected_category: None,
             projects: Vec::new(),
-            project_state: ListState::default(),
+            project_state,
             input: String::new(),
             status_message: None,
             search_query: String::new(),
@@ -418,27 +420,32 @@ fn ui(f: &mut Frame, app: &mut App) {
         AppMode::ProjectSelection | AppMode::Favorites => {
             let query = app.search_query.to_lowercase();
             let filtered: Vec<&ProjectInfo> = app.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).collect();
-            let items: Vec<ListItem> = if filtered.is_empty() {
-                vec![ListItem::new("  No results found").style(Style::default().fg(Color::Red).add_modifier(Modifier::ITALIC))]
+            
+            let rows: Vec<Row> = if filtered.is_empty() {
+                vec![Row::new(vec![Cell::from("  No results found").style(Style::default().fg(Color::Red).add_modifier(Modifier::ITALIC))])]
             } else {
                 filtered.iter().enumerate().map(|(idx, p)| {
                     let is_selected = app.project_state.selected() == Some(idx);
                     let name_style = if is_selected { Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::Rgb(255, 255, 255)) };
-                    let mut spans = Vec::new();
-                    let path_str = p.path.to_str().unwrap_or("");
-                    if app.config.favorites.contains(&path_str.to_string()) {
-                        spans.push(Span::styled(" ", Style::default().fg(Color::Yellow)));
-                    }
-                    spans.push(Span::styled(p.name.clone(), name_style));
-                    if let Some(branch) = &p.git_branch {
-                        spans.push(Span::styled(format!("  {}", branch), Style::default().fg(Color::Rgb(100, 100, 100))));
+                    let name_cell = Cell::from(p.name.clone()).style(name_style);
+                    let git_cell = if let Some(branch) = &p.git_branch {
+                        let mut spans = vec![Span::styled(format!("  {}", branch), Style::default().fg(Color::Rgb(100, 100, 100)))];
                         if p.has_changes { spans.push(Span::styled(" ", Style::default().fg(Color::Yellow))); } else { spans.push(Span::styled(" ", Style::default().fg(Color::Green))); }
-                    }
-                    ListItem::new(Line::from(spans))
+                        Cell::from(Line::from(spans))
+                    } else { Cell::from("") };
+                    let path_str = p.path.to_str().unwrap_or("");
+                    let is_fav = app.config.favorites.contains(&path_str.to_string());
+                    let fav_cell = if is_fav { Cell::from(" ").style(Style::default().fg(Color::Yellow)) } else { Cell::from("") };
+                    Row::new(vec![name_cell, git_cell, fav_cell])
                 }).collect()
             };
+
             let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
-            f.render_stateful_widget(List::new(items).block(Block::default().title(title).borders(Borders::ALL)).highlight_style(Style::default()).highlight_symbol("> "), chunks[1], &mut app.project_state);
+            let table = Table::new(rows, [Constraint::Percentage(60), Constraint::Percentage(35), Constraint::Length(2)])
+                .block(Block::default().title(title).borders(Borders::ALL))
+                .highlight_symbol("> ");
+
+            f.render_stateful_widget(table, chunks[1], &mut app.project_state);
         }
         AppMode::InputUrl => {
             let content = if app.input.is_empty() { Line::from(vec![Span::styled("Type or paste Git URL here...", Style::default().fg(Color::Rgb(80, 80, 80)).add_modifier(Modifier::ITALIC))]) } 
