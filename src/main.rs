@@ -61,7 +61,7 @@ impl App {
         App {
             mode: AppMode::MainMenu,
             config,
-            menu_items: vec!["Open Existing Project", "Create New Project", "Clone Repository"],
+            menu_items: vec!["Open Existing Project", "Open IntelliJ IDEA", "Clone Repository"],
             menu_state,
             categories: Vec::new(),
             category_state: ListState::default(),
@@ -184,8 +184,8 @@ impl App {
                     Some(0) => { self.load_categories(); self.mode = AppMode::CategorySelection; }
                     Some(1) => {
                         process::Command::new(&self.config.idea_path)
-                            .arg("nosplash").stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
-                        self.status_message = Some(("Opening Project Wizard...".to_string(), Instant::now()));
+                            .stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
+                        self.status_message = Some(("Opening IntelliJ IDEA...".to_string(), Instant::now()));
                     }
                     Some(2) => { self.input.clear(); self.mode = AppMode::InputUrl; }
                     _ => {}
@@ -383,13 +383,9 @@ fn ui(f: &mut Frame, app: &mut App) {
         }
         AppMode::InputUrl => {
             let content = if app.input.is_empty() {
-                Line::from(vec![
-                    Span::styled("Type or paste Git URL here...", Style::default().fg(Color::Rgb(80, 80, 80)).add_modifier(Modifier::ITALIC))
-                ])
+                Line::from(vec![Span::styled("Type or paste Git URL here...", Style::default().fg(Color::Rgb(80, 80, 80)).add_modifier(Modifier::ITALIC))])
             } else {
-                Line::from(vec![
-                    Span::styled(&app.input, Style::default().fg(Color::Yellow))
-                ])
+                Line::from(vec![Span::styled(&app.input, Style::default().fg(Color::Yellow))])
             };
             f.render_widget(Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(" Git Repository URL ").border_style(Style::default().fg(Color::Yellow))), chunks[1]);
         }
