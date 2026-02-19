@@ -471,8 +471,13 @@ fn ui(f: &mut Frame, app: &mut App) {
                 }).collect()
             };
             let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
-            let table = Table::new(rows, [Constraint::Min(30), Constraint::Length(30), Constraint::Length(5)]).header(Row::new(vec![Cell::from("Name"), Cell::from("Git Status"), Cell::from("")])
-                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).height(1).bottom_margin(1)).block(Block::default().title(title).borders(Borders::ALL)).highlight_symbol("> ");
+            let table = Table::new(rows, [Constraint::Min(30), Constraint::Length(30), Constraint::Length(5)])
+                .header(Row::new(vec![Cell::from("Name"), Cell::from("Git Status"), Cell::from("")])
+                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).height(1).bottom_margin(1))
+                .block(Block::default().title(title).borders(Borders::ALL))
+                .highlight_symbol("> ")
+                .row_highlight_style(Style::default().bg(Color::Rgb(40, 40, 40))); // Adds a dark grey background to the selected row
+
             f.render_stateful_widget(table, chunks[1], &mut app.project_state);
         }
         AppMode::InputUrl => {
