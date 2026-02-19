@@ -33,6 +33,7 @@ enum AppMode {
     InputUrl,
     CloneCategory,
     Favorites,
+    Recent, // New mode
     ConfirmOpen,
 }
 
@@ -42,6 +43,8 @@ struct Config {
     idea_path: String,
     #[serde(default)]
     favorites: Vec<String>,
+    #[serde(default)]
+    recent_projects: Vec<String>, // New: Stores recently opened project paths
 }
 
 impl Default for Config {
@@ -50,6 +53,7 @@ impl Default for Config {
             base_dir: "/home/fabian/dev".to_string(),
             idea_path: "/opt/intellij-idea-ultimate-edition/bin/idea".to_string(),
             favorites: Vec::new(),
+            recent_projects: Vec::new(),
         }
     }
 }
@@ -89,7 +93,7 @@ impl App {
             mode: AppMode::MainMenu,
             previous_mode: None,
             config,
-            menu_items: vec!["Favorites", "Open Existing Project", "Open IntelliJ IDEA", "Clone Repository"],
+            menu_items: vec!["Favorites", "Recent Projects", "Open Existing Project", "Open IntelliJ IDEA", "Clone Repository"],
             menu_state,
             categories: Vec::new(),
             category_state: ListState::default(),
@@ -109,8 +113,18 @@ impl App {
         Ok(())
     }
 
+    fn add_to_recent(&mut self, path: String) {
+        // Remove if already exists to move it to the top
+        self.config.recent_projects.retain(|x| x != &path);
+        // Insert at beginning
+        self.config.recent_projects.insert(0, path);
+        // Keep only last 10
+        self.config.recent_projects.truncate(10);
+        let _ = self.save_config();
+    }
+
     fn toggle_favorite(&mut self) {
-        if self.mode == AppMode::ProjectSelection || self.mode == AppMode::Favorites {
+        if self.mode == AppMode::ProjectSelection || self.mode == AppMode::Favorites || self.mode == AppMode::Recent {
             let query = self.search_query.to_lowercase();
             let filtered: Vec<&ProjectInfo> = self.projects.iter()
                 .filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query))
@@ -145,6 +159,22 @@ impl App {
         }
         favs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         self.projects = favs;
+        self.project_state.select(if self.projects.is_empty() { None } else { Some(0) });
+        self.selected_category = None;
+    }
+
+    fn load_recent(&mut self) {
+        let mut recent = Vec::new();
+        for path_str in &self.config.recent_projects {
+            let path = PathBuf::from(path_str);
+            if path.exists() {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
+                let (branch, changes) = Self::get_git_info(&path);
+                recent.push(ProjectInfo { name, path, git_branch: branch, has_changes: changes });
+            }
+        }
+        // Don't sort recent projects, keep the chronological order
+        self.projects = recent;
         self.project_state.select(if self.projects.is_empty() { None } else { Some(0) });
         self.selected_category = None;
     }
@@ -212,7 +242,7 @@ impl App {
                 let i = match self.category_state.selected() { Some(i) => if i >= len - 1 { 0 } else { i + 1 }, None => 0 };
                 self.category_state.select(Some(i));
             }
-            AppMode::ProjectSelection | AppMode::Favorites => {
+            AppMode::ProjectSelection | AppMode::Favorites | AppMode::Recent => {
                 let query = self.search_query.to_lowercase();
                 let len = self.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).count();
                 if len == 0 { return; }
@@ -235,7 +265,7 @@ impl App {
                 let i = match self.category_state.selected() { Some(i) => if i == 0 { len - 1 } else { i - 1 }, None => 0 };
                 self.category_state.select(Some(i));
             }
-            AppMode::ProjectSelection | AppMode::Favorites => {
+            AppMode::ProjectSelection | AppMode::Favorites | AppMode::Recent => {
                 let query = self.search_query.to_lowercase();
                 let len = self.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).count();
                 if len == 0 { return; }
@@ -251,13 +281,14 @@ impl App {
             AppMode::MainMenu => {
                 match self.menu_state.selected() {
                     Some(0) => { self.load_favorites(); self.mode = AppMode::Favorites; }
-                    Some(1) => { self.load_categories(); self.mode = AppMode::CategorySelection; }
-                    Some(2) => {
+                    Some(1) => { self.load_recent(); self.mode = AppMode::Recent; }
+                    Some(2) => { self.load_categories(); self.mode = AppMode::CategorySelection; }
+                    Some(3) => {
                         self.pending_project = Some(ProjectInfo { name: "IntelliJ IDEA".to_string(), path: PathBuf::from("IDE"), git_branch: None, has_changes: false });
                         self.previous_mode = Some(AppMode::MainMenu);
                         self.mode = AppMode::ConfirmOpen;
                     }
-                    Some(3) => { self.input.clear(); self.mode = AppMode::InputUrl; }
+                    Some(4) => { self.input.clear(); self.mode = AppMode::InputUrl; }
                     _ => {}
                 }
                 Ok(false)
@@ -274,7 +305,7 @@ impl App {
                 }
                 Ok(false)
             }
-            AppMode::ProjectSelection | AppMode::Favorites => {
+            AppMode::ProjectSelection | AppMode::Favorites | AppMode::Recent => {
                 let query = self.search_query.to_lowercase();
                 let filtered: Vec<&ProjectInfo> = self.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).collect();
                 if let Some(i) = self.project_state.selected() {
@@ -307,17 +338,19 @@ impl App {
     }
 
     fn execute_pending_open(&mut self) -> Result<(), Box<dyn Error>> {
-        if let Some(proj) = &self.pending_project {
+        if let Some(proj) = self.pending_project.take() {
             if proj.name == "IntelliJ IDEA" {
                 process::Command::new(&self.config.idea_path).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
                 self.status_message = Some(("Opening IntelliJ IDEA...".to_string(), Instant::now()));
             } else {
-                process::Command::new(&self.config.idea_path).arg(proj.path.to_str().unwrap_or("")).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
-                self.status_message = Some((format!("Launched {}!", proj.name), Instant::now()));
+                let path_str = proj.path.to_str().unwrap_or("").to_string();
+                let name = proj.name.clone();
+                self.add_to_recent(path_str.clone()); // Save to history
+                process::Command::new(&self.config.idea_path).arg(path_str).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
+                self.status_message = Some((format!("Launched {}!", name), Instant::now()));
             }
         }
         self.mode = self.previous_mode.take().unwrap_or(AppMode::MainMenu);
-        self.pending_project = None;
         Ok(())
     }
 
@@ -334,6 +367,7 @@ impl App {
         }?;
         if status.success() {
             let project_path = clone_dir.join(project_name);
+            self.add_to_recent(project_path.to_str().unwrap_or("").to_string());
             process::Command::new(&self.config.idea_path).arg(project_path.to_str().unwrap_or("")).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
             self.status_message = Some((format!("Cloned and opened {}!", project_name), Instant::now()));
             self.mode = AppMode::MainMenu;
@@ -346,7 +380,7 @@ impl App {
         self.search_query.clear();
         match self.mode {
             AppMode::MainMenu => {}
-            AppMode::CategorySelection | AppMode::InputUrl | AppMode::Favorites => self.mode = AppMode::MainMenu,
+            AppMode::CategorySelection | AppMode::InputUrl | AppMode::Favorites | AppMode::Recent => self.mode = AppMode::MainMenu,
             AppMode::ProjectSelection => self.mode = AppMode::CategorySelection,
             AppMode::CloneCategory => self.mode = AppMode::InputUrl,
             AppMode::ConfirmOpen => {
@@ -441,6 +475,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         AppMode::InputUrl => " Clone Repository: Paste URL ".to_string(),
         AppMode::CloneCategory => " Select Category to Clone into ".to_string(),
         AppMode::Favorites => " Favorite Projects ".to_string(),
+        AppMode::Recent => " Recently Opened Projects ".to_string(),
     };
     f.render_widget(Paragraph::new(title_text).style(Style::default().fg(MOCHA_TEAL).add_modifier(Modifier::BOLD)).alignment(Alignment::Center).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL))), chunks[0]);
 
@@ -466,10 +501,9 @@ fn ui(f: &mut Frame, app: &mut App) {
             };
             f.render_stateful_widget(List::new(items).block(Block::default().title(" Categories ").borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL))).highlight_style(Style::default()).highlight_symbol(Span::styled("> ", Style::default().fg(MOCHA_BLUE))), chunks[1], &mut app.category_state);
         }
-        AppMode::ProjectSelection | AppMode::Favorites => {
+        AppMode::ProjectSelection | AppMode::Favorites | AppMode::Recent => {
             let query = app.search_query.to_lowercase();
             let filtered: Vec<&ProjectInfo> = app.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).collect();
-            
             let rows: Vec<Row> = if filtered.is_empty() {
                 vec![Row::new(vec![Cell::from("  No results found").style(Style::default().fg(MOCHA_RED).add_modifier(Modifier::ITALIC))])]
             } else {
@@ -489,12 +523,11 @@ fn ui(f: &mut Frame, app: &mut App) {
                     Row::new(vec![Cell::from(name_cell), Cell::from(git_status), fav_cell])
                 }).collect()
             };
-
-                        let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
-                        let table = Table::new(rows, [Constraint::Min(30), Constraint::Length(30), Constraint::Length(5)])
-                            .block(Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL)))
-                            .highlight_symbol(Span::styled("> ", Style::default().fg(MOCHA_BLUE)))
-                            .row_highlight_style(Style::default().bg(MOCHA_SURFACE));
+            let title = match app.mode { AppMode::Favorites => " Favorites ", AppMode::Recent => " Recently Opened ", _ => " Projects " };
+            let table = Table::new(rows, [Constraint::Min(30), Constraint::Length(30), Constraint::Length(5)])
+                .header(Row::new(vec![Cell::from("Name").style(Style::default().fg(MOCHA_TEXT).add_modifier(Modifier::BOLD)), Cell::from("Git Status").style(Style::default().fg(MOCHA_TEXT).add_modifier(Modifier::BOLD)), Cell::from("")]).height(1))
+                .block(Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL)))
+                .highlight_symbol(Span::styled("> ", Style::default().fg(MOCHA_BLUE))).row_highlight_style(Style::default().bg(MOCHA_SURFACE));
             f.render_stateful_widget(table, chunks[1], &mut app.project_state);
         }
         AppMode::InputUrl => {
@@ -518,6 +551,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         match app.mode {
             AppMode::ConfirmOpen => "y: Yes  •  n: No / Cancel".to_string(),
             AppMode::MainMenu => "Enter / Right: Select  •  q: Quit".to_string(),
+            AppMode::Recent => "/: Search  •  Enter / Right: Open  •  f: Favorite  •  Backspace: Back  •  q: Quit".to_string(),
             AppMode::CategorySelection => "/: Search  •  Enter / Right: View Projects  •  Backspace: Back  •  q: Quit".to_string(),
             _ => "/: Search  •  Enter / Right: Open  •  f: Favorite  •  Backspace: Back  •  q: Quit".to_string(),
         }
