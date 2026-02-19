@@ -35,6 +35,7 @@ enum AppMode {
     Favorites,
     Recent,
     ConfirmOpen,
+    Help,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -329,7 +330,7 @@ impl App {
                 }
                 Ok(false)
             }
-            AppMode::ConfirmOpen => Ok(false),
+            AppMode::ConfirmOpen | AppMode::Help => Ok(false),
         }
     }
 
@@ -379,7 +380,7 @@ impl App {
             AppMode::CategorySelection | AppMode::InputUrl | AppMode::Favorites | AppMode::Recent => self.mode = AppMode::MainMenu,
             AppMode::ProjectSelection => self.mode = AppMode::CategorySelection,
             AppMode::CloneCategory => self.mode = AppMode::InputUrl,
-            AppMode::ConfirmOpen => {
+            AppMode::ConfirmOpen | AppMode::Help => {
                 self.mode = self.previous_mode.take().unwrap_or(AppMode::MainMenu);
                 self.pending_project = None;
             }
@@ -422,6 +423,8 @@ where <B as Backend>::Error: 'static {
                         KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc | KeyCode::Backspace => { app.go_back(); }
                         _ => {}
                     }
+                } else if app.mode == AppMode::Help {
+                    app.go_back();
                 } else if app.is_searching {
                     match key.code {
                         KeyCode::Enter => { app.is_searching = false; }
@@ -447,6 +450,7 @@ where <B as Backend>::Error: 'static {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('f') => { app.toggle_favorite(); }
                         KeyCode::Char('/') => { if app.mode != AppMode::MainMenu { app.is_searching = true; } }
+                        KeyCode::Char('?') => { app.previous_mode = Some(app.mode.clone()); app.mode = AppMode::Help; }
                         KeyCode::Down | KeyCode::Char('j') => app.next(),
                         KeyCode::Up | KeyCode::Char('k') => app.previous(),
                         KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => { app.on_enter()?; },
@@ -460,12 +464,24 @@ where <B as Backend>::Error: 'static {
     }
 }
 
+fn dim_background(f: &mut Frame) {
+    let area = f.area();
+    let buffer = f.buffer_mut();
+    for y in area.top()..area.bottom() {
+        for x in area.left()..area.right() {
+            if let Some(cell) = buffer.cell_mut((x, y)) {
+                cell.set_fg(MOCHA_OVERLAY);
+            }
+        }
+    }
+}
+
 fn ui(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default().direction(Direction::Vertical).margin(2)
         .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(3)].as_ref()).split(f.area());
 
     let title_text = match app.mode {
-        AppMode::MainMenu | AppMode::ConfirmOpen => " idea-tui ".to_string(),
+        AppMode::MainMenu | AppMode::ConfirmOpen | AppMode::Help => " idea-tui ".to_string(),
         AppMode::CategorySelection => " Select Category ".to_string(),
         AppMode::ProjectSelection => format!(" Projects in {} ", app.selected_category.as_ref().unwrap_or(&"".to_string())),
         AppMode::InputUrl => " Clone Repository: Paste URL ".to_string(),
@@ -476,7 +492,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(Paragraph::new(title_text).style(Style::default().fg(MOCHA_TEAL).add_modifier(Modifier::BOLD)).alignment(Alignment::Center).block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL))), chunks[0]);
 
     match app.mode {
-        AppMode::MainMenu | AppMode::ConfirmOpen => {
+        AppMode::MainMenu | AppMode::ConfirmOpen | AppMode::Help => {
             let items: Vec<ListItem> = app.menu_items.iter().enumerate().map(|(idx, i)| {
                 let is_selected = app.menu_state.selected() == Some(idx);
                 let style = if is_selected { Style::default().fg(MOCHA_BLUE).add_modifier(Modifier::BOLD) } else { Style::default().fg(MOCHA_TEXT) };
@@ -532,21 +548,41 @@ fn ui(f: &mut Frame, app: &mut App) {
         }
     }
 
-    if app.mode == AppMode::ConfirmOpen {
-        if let Some(proj) = &app.pending_project {
-            let area = centered_rect(60, 20, f.area());
-            f.render_widget(Clear, area);
-            let block = Block::default().title(" Confirm ").borders(Borders::ALL).border_style(Style::default().fg(MOCHA_PEACH));
-            let text = format!("\nOpen {} in IntelliJ?\n\n(y)es / (n)o", proj.name);
-            f.render_widget(Paragraph::new(text).block(block).alignment(Alignment::Center).style(Style::default().fg(MOCHA_TEXT)), area);
+    if app.mode == AppMode::ConfirmOpen || app.mode == AppMode::Help {
+        dim_background(f);
+        let area = if app.mode == AppMode::Help { centered_rect(70, 70, f.area()) } else { centered_rect(60, 20, f.area()) };
+        f.render_widget(Clear, area);
+        
+        if app.mode == AppMode::ConfirmOpen {
+            if let Some(proj) = &app.pending_project {
+                let block = Block::default().title(" Confirm ").borders(Borders::ALL).border_style(Style::default().fg(MOCHA_PEACH));
+                let text = format!("\nOpen {} in IntelliJ?\n\n(y)es / (n)o", proj.name);
+                f.render_widget(Paragraph::new(text).block(block).alignment(Alignment::Center).style(Style::default().fg(MOCHA_TEXT)), area);
+            }
+        } else {
+            let block = Block::default().title(" Help & Shortcuts ").borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL));
+            let help_rows = vec![
+                Row::new(vec![Cell::from("hjkl / Arrows"), Cell::from("Navigate")]),
+                Row::new(vec![Cell::from("Enter / l"), Cell::from("Select / Open / Confirm")]),
+                Row::new(vec![Cell::from("Backspace / h"), Cell::from("Go Back / Cancel")]),
+                Row::new(vec![Cell::from("/"), Cell::from("Search / Filter")]),
+                Row::new(vec![Cell::from("f"), Cell::from("Toggle Favorite")]),
+                Row::new(vec![Cell::from("q"), Cell::from("Quit")]),
+                Row::new(vec![Cell::from("Esc"), Cell::from("Clear Search / Main Menu")]),
+                Row::new(vec![Cell::from("?"), Cell::from("Toggle Help")]),
+            ];
+            let help_table = Table::new(help_rows, [Constraint::Percentage(40), Constraint::Percentage(60)])
+                .block(block)
+                .style(Style::default().fg(MOCHA_TEXT));
+            f.render_widget(help_table, area);
         }
     }
 
     let footer_text = if app.is_searching { format!("/{} (Press Enter to browse results)", app.search_query) } else if let Some((msg, _)) = &app.status_message { msg.clone() } else {
         match app.mode {
             AppMode::ConfirmOpen => "y: Yes  •  n: No / Cancel".to_string(),
-            AppMode::MainMenu => "Enter / Right: Select  •  q: Quit".to_string(),
-            AppMode::Recent => "/: Search  •  Enter / Right: Open  •  f: Favorite  •  Backspace: Back  •  q: Quit".to_string(),
+            AppMode::Help => "Press any key to close".to_string(),
+            AppMode::MainMenu => "Enter / Right: Select  •  ?: Help  •  q: Quit".to_string(),
             AppMode::CategorySelection => "/: Search  •  Enter / Right: View Projects  •  Backspace: Back  •  q: Quit".to_string(),
             _ => "/: Search  •  Enter / Right: Open  •  f: Favorite  •  Backspace: Back  •  q: Quit".to_string(),
         }
