@@ -521,7 +521,6 @@ fn ui(f: &mut Frame, app: &mut App) {
             };
             let title = match app.mode { AppMode::Favorites => " Favorites ", AppMode::Recent => " Recently Opened ", _ => " Projects " };
             let table = Table::new(rows, [Constraint::Min(30), Constraint::Length(30), Constraint::Length(5)])
-                .header(Row::new(vec![Cell::from("Name").style(Style::default().fg(MOCHA_TEXT).add_modifier(Modifier::BOLD)), Cell::from("Git Status").style(Style::default().fg(MOCHA_TEXT).add_modifier(Modifier::BOLD)), Cell::from("")]).height(1))
                 .block(Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL)))
                 .highlight_symbol(Span::styled("> ", Style::default().fg(MOCHA_BLUE))).row_highlight_style(Style::default().bg(MOCHA_SURFACE));
             f.render_stateful_widget(table, chunks[1], &mut app.project_state);
