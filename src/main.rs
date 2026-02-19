@@ -469,6 +469,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         AppMode::ProjectSelection | AppMode::Favorites => {
             let query = app.search_query.to_lowercase();
             let filtered: Vec<&ProjectInfo> = app.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).collect();
+            
             let rows: Vec<Row> = if filtered.is_empty() {
                 vec![Row::new(vec![Cell::from("  No results found").style(Style::default().fg(MOCHA_RED).add_modifier(Modifier::ITALIC))])]
             } else {
@@ -488,17 +489,12 @@ fn ui(f: &mut Frame, app: &mut App) {
                     Row::new(vec![Cell::from(name_cell), Cell::from(git_status), fav_cell])
                 }).collect()
             };
-            let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
-            let header = Row::new(vec![
-                Cell::from("Name").style(Style::default().fg(MOCHA_PEACH).add_modifier(Modifier::BOLD)),
-                Cell::from("Git Status").style(Style::default().fg(MOCHA_PEACH).add_modifier(Modifier::BOLD)),
-                Cell::from(""),
-            ]).height(1).bottom_margin(1);
 
-            let table = Table::new(rows, [Constraint::Min(30), Constraint::Length(30), Constraint::Length(5)])
-                .header(header)
-                .block(Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL)))
-                .highlight_symbol(Span::styled("> ", Style::default().fg(MOCHA_BLUE))).row_highlight_style(Style::default().bg(MOCHA_SURFACE));
+                        let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
+                        let table = Table::new(rows, [Constraint::Min(30), Constraint::Length(30), Constraint::Length(5)])
+                            .block(Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(MOCHA_TEAL)))
+                            .highlight_symbol(Span::styled("> ", Style::default().fg(MOCHA_BLUE)))
+                            .row_highlight_style(Style::default().bg(MOCHA_SURFACE));
             f.render_stateful_widget(table, chunks[1], &mut app.project_state);
         }
         AppMode::InputUrl => {
@@ -522,8 +518,8 @@ fn ui(f: &mut Frame, app: &mut App) {
         match app.mode {
             AppMode::ConfirmOpen => "y: Yes  •  n: No / Cancel".to_string(),
             AppMode::MainMenu => "Enter / Right: Select  •  q: Quit".to_string(),
-            AppMode::CategorySelection => "/: Search  •  Enter / Right: View Projects  •  Backspace: Back".to_string(),
-            _ => "/: Search  •  Enter / Right: Open  •  f: Favorite  •  Backspace: Back".to_string(),
+            AppMode::CategorySelection => "/: Search  •  Enter / Right: View Projects  •  Backspace: Back  •  q: Quit".to_string(),
+            _ => "/: Search  •  Enter / Right: Open  •  f: Favorite  •  Backspace: Back  •  q: Quit".to_string(),
         }
     };
     f.render_widget(Paragraph::new(footer_text).style(if app.status_message.is_some() { Style::default().fg(MOCHA_GREEN).add_modifier(Modifier::BOLD) } else if app.is_searching { Style::default().fg(Color::Yellow) } else { Style::default().fg(MOCHA_TEXT) }).alignment(Alignment::Center), chunks[2]);
