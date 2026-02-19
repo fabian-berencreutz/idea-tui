@@ -42,10 +42,16 @@ enum AppMode {
 struct Config {
     base_dir: String,
     idea_path: String,
+    #[serde(default = "default_terminal_cmd")]
+    terminal_command: String, // New: Configurable terminal command
     #[serde(default)]
     favorites: Vec<String>,
     #[serde(default)]
     recent_projects: Vec<String>,
+}
+
+fn default_terminal_cmd() -> String {
+    "kitty --directory".to_string()
 }
 
 impl Default for Config {
@@ -53,6 +59,7 @@ impl Default for Config {
         Self {
             base_dir: "/home/fabian/dev".to_string(),
             idea_path: "/opt/intellij-idea-ultimate-edition/bin/idea".to_string(),
+            terminal_command: default_terminal_cmd(),
             favorites: Vec::new(),
             recent_projects: Vec::new(),
         }
@@ -121,6 +128,29 @@ impl App {
         let _ = self.save_config();
     }
 
+    fn open_terminal(&mut self) -> Result<(), Box<dyn Error>> {
+        if self.mode == AppMode::ProjectSelection || self.mode == AppMode::Favorites || self.mode == AppMode::Recent {
+            let query = self.search_query.to_lowercase();
+            let filtered: Vec<&ProjectInfo> = self.projects.iter()
+                .filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query))
+                .collect();
+
+            if let Some(i) = self.project_state.selected() {
+                if i < filtered.len() {
+                    let path = filtered[i].path.to_str().unwrap_or("");
+                    let cmd_parts: Vec<&str> = self.config.terminal_command.split_whitespace().collect();
+                    if !cmd_parts.is_empty() {
+                        let mut command = process::Command::new(cmd_parts[0]);
+                        for arg in &cmd_parts[1..] { command.arg(arg); }
+                        command.arg(path).spawn()?;
+                        self.status_message = Some((format!("Opened terminal for {}!", filtered[i].name), Instant::now()));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn toggle_favorite(&mut self) {
         if self.mode == AppMode::ProjectSelection || self.mode == AppMode::Favorites || self.mode == AppMode::Recent {
             let query = self.search_query.to_lowercase();
@@ -139,8 +169,6 @@ impl App {
                         self.status_message = Some((format!("Added {} to favorites", filtered[i].name), Instant::now()));
                     }
                     let _ = self.save_config();
-                    // NOTE: We don't call load_favorites() here anymore.
-                    // The project will remain in the list (with a gray star) until the user leaves the view.
                 }
             }
         }
@@ -450,6 +478,7 @@ where <B as Backend>::Error: 'static {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('f') => { app.toggle_favorite(); }
+                        KeyCode::Char('t') => { app.open_terminal()?; } // Quick Terminal
                         KeyCode::Char('/') => { if app.mode != AppMode::MainMenu { app.is_searching = true; } }
                         KeyCode::Char('?') => { app.previous_mode = Some(app.mode.clone()); app.mode = AppMode::Help; }
                         KeyCode::Down | KeyCode::Char('j') => app.next(),
@@ -568,6 +597,7 @@ fn ui(f: &mut Frame, app: &mut App) {
                 Row::new(vec![Cell::from("Backspace / h"), Cell::from("Go Back / Cancel")]),
                 Row::new(vec![Cell::from("/"), Cell::from("Search / Filter")]),
                 Row::new(vec![Cell::from("f"), Cell::from("Toggle Favorite")]),
+                Row::new(vec![Cell::from("t"), Cell::from("Open Quick Terminal")]),
                 Row::new(vec![Cell::from("q"), Cell::from("Quit")]),
                 Row::new(vec![Cell::from("Esc"), Cell::from("Clear Search / Main Menu")]),
                 Row::new(vec![Cell::from("?"), Cell::from("Toggle Help")]),
@@ -585,7 +615,7 @@ fn ui(f: &mut Frame, app: &mut App) {
             AppMode::Help => "Press any key to close".to_string(),
             AppMode::MainMenu => "Enter / Right: Select  •  ?: Help  •  q: Quit".to_string(),
             AppMode::CategorySelection => "/: Search  •  Enter / Right: View Projects  •  Backspace: Back  •  q: Quit".to_string(),
-            _ => "/: Search  •  Enter / Right: Open  •  f: Favorite  •  Backspace: Back  •  q: Quit".to_string(),
+            _ => "/: Search  •  t: Terminal  •  f: Favorite  •  Backspace: Back  •  ?: Help".to_string(),
         }
     };
     f.render_widget(Paragraph::new(footer_text).style(if app.status_message.is_some() { Style::default().fg(MOCHA_GREEN).add_modifier(Modifier::BOLD) } else if app.is_searching { Style::default().fg(Color::Yellow) } else { Style::default().fg(MOCHA_TEXT) }).alignment(Alignment::Center), chunks[2]);
