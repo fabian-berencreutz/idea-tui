@@ -5,8 +5,8 @@ use crossterm::{
 };
 use ratatui::{
     backend::{Backend, CrosstermBackend},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Table, Row, Cell, TableState},
-    layout::{Alignment, Constraint, Direction, Layout},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Table, Row, Cell, TableState, Clear},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     Frame, Terminal,
     text::{Line, Span},
@@ -22,6 +22,7 @@ enum AppMode {
     InputUrl,
     CloneCategory,
     Favorites,
+    ConfirmOpen, // New mode for confirmation
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -51,6 +52,7 @@ struct ProjectInfo {
 
 struct App {
     mode: AppMode,
+    previous_mode: Option<AppMode>, // To return after confirm
     config: Config,
     menu_items: Vec<&'static str>,
     menu_state: ListState,
@@ -63,6 +65,7 @@ struct App {
     status_message: Option<(String, Instant)>,
     search_query: String,
     is_searching: bool,
+    pending_project: Option<ProjectInfo>, // Project waiting for confirm
 }
 
 impl App {
@@ -73,6 +76,7 @@ impl App {
         project_state.select(Some(0));
         App {
             mode: AppMode::MainMenu,
+            previous_mode: None,
             config,
             menu_items: vec!["Favorites", "Open Existing Project", "Open IntelliJ IDEA", "Clone Repository"],
             menu_state,
@@ -85,6 +89,7 @@ impl App {
             status_message: None,
             search_query: String::new(),
             is_searching: false,
+            pending_project: None,
         }
     }
 
@@ -111,9 +116,7 @@ impl App {
                         self.status_message = Some((format!("Added {} to favorites", filtered[i].name), Instant::now()));
                     }
                     let _ = self.save_config();
-                    if self.mode == AppMode::Favorites {
-                        self.load_favorites();
-                    }
+                    if self.mode == AppMode::Favorites { self.load_favorites(); }
                 }
             }
         }
@@ -239,8 +242,9 @@ impl App {
                     Some(0) => { self.load_favorites(); self.mode = AppMode::Favorites; }
                     Some(1) => { self.load_categories(); self.mode = AppMode::CategorySelection; }
                     Some(2) => {
-                        process::Command::new(&self.config.idea_path).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
-                        self.status_message = Some(("Opening IntelliJ IDEA...".to_string(), Instant::now()));
+                        self.pending_project = Some(ProjectInfo { name: "IntelliJ IDEA".to_string(), path: PathBuf::from("IDE"), git_branch: None, has_changes: false });
+                        self.previous_mode = Some(AppMode::MainMenu);
+                        self.mode = AppMode::ConfirmOpen;
                     }
                     Some(3) => { self.input.clear(); self.mode = AppMode::InputUrl; }
                     _ => {}
@@ -265,8 +269,9 @@ impl App {
                 if let Some(i) = self.project_state.selected() {
                     if i < filtered.len() {
                         let proj = filtered[i];
-                        process::Command::new(&self.config.idea_path).arg(proj.path.to_str().unwrap_or("")).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
-                        self.status_message = Some((format!("Launched {}!", proj.name), Instant::now()));
+                        self.pending_project = Some(ProjectInfo { name: proj.name.clone(), path: proj.path.clone(), git_branch: None, has_changes: false });
+                        self.previous_mode = Some(if self.mode == AppMode::Favorites { AppMode::Favorites } else { AppMode::ProjectSelection });
+                        self.mode = AppMode::ConfirmOpen;
                     }
                 }
                 Ok(false)
@@ -286,7 +291,23 @@ impl App {
                 }
                 Ok(false)
             }
+            AppMode::ConfirmOpen => Ok(false),
         }
+    }
+
+    fn execute_pending_open(&mut self) -> Result<(), Box<dyn Error>> {
+        if let Some(proj) = &self.pending_project {
+            if proj.name == "IntelliJ IDEA" {
+                process::Command::new(&self.config.idea_path).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
+                self.status_message = Some(("Opening IntelliJ IDEA...".to_string(), Instant::now()));
+            } else {
+                process::Command::new(&self.config.idea_path).arg(proj.path.to_str().unwrap_or("")).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
+                self.status_message = Some((format!("Launched {}!", proj.name), Instant::now()));
+            }
+        }
+        self.mode = self.previous_mode.take().unwrap_or(AppMode::MainMenu);
+        self.pending_project = None;
+        Ok(())
     }
 
     fn clone_repo(&mut self, category: String) -> Result<(), Box<dyn Error>> {
@@ -317,6 +338,10 @@ impl App {
             AppMode::CategorySelection | AppMode::InputUrl | AppMode::Favorites => self.mode = AppMode::MainMenu,
             AppMode::ProjectSelection => self.mode = AppMode::CategorySelection,
             AppMode::CloneCategory => self.mode = AppMode::InputUrl,
+            AppMode::ConfirmOpen => {
+                self.mode = self.previous_mode.take().unwrap_or(AppMode::MainMenu);
+                self.pending_project = None;
+            }
         }
     }
 
@@ -350,14 +375,16 @@ where <B as Backend>::Error: 'static {
         terminal.draw(|f| ui(f, app))?;
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                if app.is_searching {
+                if app.mode == AppMode::ConfirmOpen {
+                    match key.code {
+                        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => { app.execute_pending_open()?; }
+                        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc | KeyCode::Backspace => { app.go_back(); }
+                        _ => {}
+                    }
+                } else if app.is_searching {
                     match key.code {
                         KeyCode::Enter => { app.is_searching = false; }
-                        KeyCode::Char(c) => { 
-                            app.search_query.push(c); 
-                            if let AppMode::CategorySelection | AppMode::CloneCategory = app.mode { app.category_state.select(Some(0)); } 
-                            else { app.project_state.select(Some(0)); } 
-                        }
+                        KeyCode::Char(c) => { app.search_query.push(c); if let AppMode::CategorySelection | AppMode::CloneCategory = app.mode { app.category_state.select(Some(0)); } else { app.project_state.select(Some(0)); } }
                         KeyCode::Backspace => { app.search_query.pop(); }
                         KeyCode::Esc => { app.is_searching = false; app.search_query.clear(); }
                         _ => {}
@@ -377,8 +404,7 @@ where <B as Backend>::Error: 'static {
                         KeyCode::Char('/') => { if app.mode != AppMode::MainMenu { app.is_searching = true; } }
                         KeyCode::Down | KeyCode::Char('j') => app.next(),
                         KeyCode::Up | KeyCode::Char('k') => app.previous(),
-                        KeyCode::Enter => { app.on_enter()?; },
-                        KeyCode::Right | KeyCode::Char('l') => { if app.mode != AppMode::MainMenu { app.on_enter()?; } },
+                        KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => { app.on_enter()?; },
                         KeyCode::Left | KeyCode::Backspace | KeyCode::Char('h') => app.go_back(),
                         KeyCode::Esc => { if !app.search_query.is_empty() { app.search_query.clear(); } else { app.go_back(); } }
                         _ => {}
@@ -394,7 +420,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(3)].as_ref()).split(f.area());
 
     let title_text = match app.mode {
-        AppMode::MainMenu => " idea-tui ".to_string(),
+        AppMode::MainMenu | AppMode::ConfirmOpen => " idea-tui ".to_string(),
         AppMode::CategorySelection => " Select Category ".to_string(),
         AppMode::ProjectSelection => format!(" Projects in {} ", app.selected_category.as_ref().unwrap_or(&"".to_string())),
         AppMode::InputUrl => " Clone Repository: Paste URL ".to_string(),
@@ -404,7 +430,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(Paragraph::new(title_text).style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).alignment(Alignment::Center).block(Block::default().borders(Borders::ALL)), chunks[0]);
 
     match app.mode {
-        AppMode::MainMenu => {
+        AppMode::MainMenu | AppMode::ConfirmOpen => {
             let items: Vec<ListItem> = app.menu_items.iter().map(|i| ListItem::new(*i).style(Style::default().fg(Color::Rgb(255, 255, 255)))).collect();
             f.render_stateful_widget(List::new(items).block(Block::default().title(" Actions ").borders(Borders::ALL)).highlight_style(Style::default().fg(Color::Cyan)).highlight_symbol("> "), chunks[1], &mut app.menu_state);
         }
@@ -420,52 +446,27 @@ fn ui(f: &mut Frame, app: &mut App) {
         AppMode::ProjectSelection | AppMode::Favorites => {
             let query = app.search_query.to_lowercase();
             let filtered: Vec<&ProjectInfo> = app.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).collect();
-            
             let rows: Vec<Row> = if filtered.is_empty() {
                 vec![Row::new(vec![Cell::from("  No results found").style(Style::default().fg(Color::Red).add_modifier(Modifier::ITALIC))])]
             } else {
                 filtered.iter().enumerate().map(|(idx, p)| {
                     let is_selected = app.project_state.selected() == Some(idx);
                     let name_style = if is_selected { Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::Rgb(255, 255, 255)) };
-                    
                     let name_cell = Cell::from(p.name.clone()).style(name_style);
-                    
                     let git_status = if let Some(branch) = &p.git_branch {
-                        let mut spans = Vec::new();
-                        if p.has_changes { 
-                            spans.push(Span::styled("", Style::default().fg(Color::Yellow))); 
-                        } else { 
-                            spans.push(Span::styled("", Style::default().fg(Color::Green))); 
-                        }
+                        let mut spans = vec![Span::styled("", Style::default().fg(Color::Green))];
+                        if p.has_changes { spans[0] = Span::styled("", Style::default().fg(Color::Yellow)); }
                         spans.push(Span::styled(format!("  {}", branch), Style::default().fg(Color::Rgb(100, 100, 100))));
                         Line::from(spans)
-                    } else { 
-                        Line::from(vec![
-                            Span::styled(" ", Style::default().fg(Color::Rgb(60, 60, 60))),
-                            Span::styled("[no git]", Style::default().fg(Color::Rgb(60, 60, 60)))
-                        ])
-                    };
-
-                    let path_str = p.path.to_str().unwrap_or("");
-                    let is_fav = app.config.favorites.contains(&path_str.to_string());
-                    let fav_color = if is_fav { Color::Yellow } else { Color::Rgb(60, 60, 60) };
-                    let fav_cell = Cell::from(" ").style(Style::default().fg(fav_color));
-
+                    } else { Line::from(vec![Span::styled(" [no git]", Style::default().fg(Color::Rgb(60, 60, 60)))]) };
+                    let is_fav = app.config.favorites.contains(&p.path.to_str().unwrap_or("").to_string());
+                    let fav_cell = Cell::from(" ").style(Style::default().fg(if is_fav { Color::Yellow } else { Color::Rgb(60, 60, 60) }));
                     Row::new(vec![Cell::from(name_cell), Cell::from(git_status), fav_cell])
                 }).collect()
             };
-
             let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
-            let header = Row::new(vec![Cell::from("Name"), Cell::from("Git Status"), Cell::from("")])
-                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).height(1).bottom_margin(1);
-
-            let table = Table::new(rows, [
-                Constraint::Min(30),        // Name grows
-                Constraint::Length(30),     // Git Status fixed
-                Constraint::Length(5),      // Favorite fixed
-            ])
-            .header(header).block(Block::default().title(title).borders(Borders::ALL)).highlight_symbol("> ").row_highlight_style(Style::default());
-
+            let table = Table::new(rows, [Constraint::Min(30), Constraint::Length(30), Constraint::Length(5)]).header(Row::new(vec![Cell::from("Name"), Cell::from("Git Status"), Cell::from("")])
+                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)).height(1).bottom_margin(1)).block(Block::default().title(title).borders(Borders::ALL)).highlight_symbol("> ");
             f.render_stateful_widget(table, chunks[1], &mut app.project_state);
         }
         AppMode::InputUrl => {
@@ -475,15 +476,29 @@ fn ui(f: &mut Frame, app: &mut App) {
         }
     }
 
+    if app.mode == AppMode::ConfirmOpen {
+        if let Some(proj) = &app.pending_project {
+            let area = centered_rect(60, 20, f.area());
+            f.render_widget(Clear, area); // This clears the background
+            let block = Block::default().title(" Confirm ").borders(Borders::ALL).border_style(Style::default().fg(Color::Yellow));
+            let text = format!("\nOpen {} in IntelliJ?\n\n(y)es / (n)o", proj.name);
+            let p = Paragraph::new(text).block(block).alignment(Alignment::Center);
+            f.render_widget(p, area);
+        }
+    }
+
     let footer_text = if app.is_searching { format!("/{} (Press Enter to browse results)", app.search_query) } else if let Some((msg, _)) = &app.status_message { msg.clone() } else {
         match app.mode {
-            AppMode::MainMenu => "Enter: Select  •  q: Quit".to_string(),
-            AppMode::CategorySelection => "/: Search  •  Enter / Right: View Projects  •  Backspace: Back  •  q: Quit".to_string(),
-            AppMode::ProjectSelection => "/: Search  •  Enter: Open  •  f: Toggle Favorite  •  Backspace: Back  •  q: Quit".to_string(),
-            AppMode::Favorites => "/: Search  •  Enter: Open  •  f: Remove Favorite  •  Backspace: Back  •  q: Quit".to_string(),
-            AppMode::InputUrl => "Type or Paste URL  •  Enter: Continue  •  Esc: Cancel".to_string(),
-            AppMode::CloneCategory => "/: Search  •  Select Category  •  Enter: Clone".to_string(),
+            AppMode::ConfirmOpen => "y: Yes  •  n: No / Cancel".to_string(),
+            AppMode::MainMenu => "Enter / Right: Select  •  q: Quit".to_string(),
+            AppMode::CategorySelection => "/: Search  •  Enter / Right: View Projects  •  Backspace: Back".to_string(),
+            _ => "/: Search  •  Enter / Right: Open  •  f: Favorite  •  Backspace: Back".to_string(),
         }
     };
-    f.render_widget(Paragraph::new(footer_text).style(if app.status_message.is_some() { Style::default().fg(Color::Green).add_modifier(Modifier::BOLD) } else if app.is_searching { Style::default().fg(Color::Yellow) } else { Style::default() }).alignment(Alignment::Center), chunks[2]);
+    f.render_widget(Paragraph::new(footer_text).style(if app.status_message.is_some() { Style::default().fg(Color::Green).add_modifier(Modifier::BOLD) } else { Style::default() }).alignment(Alignment::Center), chunks[2]);
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage((100 - percent_y) / 2), Constraint::Percentage(percent_y), Constraint::Percentage((100 - percent_y) / 2)].as_ref()).split(r);
+    Layout::default().direction(Direction::Horizontal).constraints([Constraint::Percentage((100 - percent_x) / 2), Constraint::Percentage(percent_x), Constraint::Percentage((100 - percent_x) / 2)].as_ref()).split(popup_layout[1])[1]
 }
