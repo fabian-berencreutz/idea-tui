@@ -58,7 +58,7 @@ struct App {
     category_state: ListState,
     selected_category: Option<String>,
     projects: Vec<ProjectInfo>,
-    project_state: TableState, // Changed from ListState to TableState
+    project_state: TableState,
     input: String,
     status_message: Option<(String, Instant)>,
     search_query: String,
@@ -427,23 +427,32 @@ fn ui(f: &mut Frame, app: &mut App) {
                 filtered.iter().enumerate().map(|(idx, p)| {
                     let is_selected = app.project_state.selected() == Some(idx);
                     let name_style = if is_selected { Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::Rgb(255, 255, 255)) };
+                    
                     let name_cell = Cell::from(p.name.clone()).style(name_style);
-                    let git_cell = if let Some(branch) = &p.git_branch {
-                        let mut spans = vec![Span::styled(format!("  {}", branch), Style::default().fg(Color::Rgb(100, 100, 100)))];
-                        if p.has_changes { spans.push(Span::styled(" ", Style::default().fg(Color::Yellow))); } else { spans.push(Span::styled(" ", Style::default().fg(Color::Green))); }
-                        Cell::from(Line::from(spans))
+                    let branch_cell = Cell::from(p.git_branch.as_ref().map(|b| format!(" {}", b)).unwrap_or_default()).style(Style::default().fg(Color::Rgb(100, 100, 100)));
+                    
+                    let status_cell = if p.git_branch.is_some() {
+                        if p.has_changes { Cell::from("").style(Style::default().fg(Color::Yellow)) } 
+                        else { Cell::from("").style(Style::default().fg(Color::Green)) }
                     } else { Cell::from("") };
+
                     let path_str = p.path.to_str().unwrap_or("");
                     let is_fav = app.config.favorites.contains(&path_str.to_string());
-                    let fav_cell = if is_fav { Cell::from(" ").style(Style::default().fg(Color::Yellow)) } else { Cell::from("") };
-                    Row::new(vec![name_cell, git_cell, fav_cell])
+                    let fav_cell = if is_fav { Cell::from("").style(Style::default().fg(Color::Yellow)) } else { Cell::from("") };
+
+                    Row::new(vec![name_cell, branch_cell, status_cell, fav_cell])
                 }).collect()
             };
 
             let title = if app.mode == AppMode::Favorites { " Favorites " } else { " Projects " };
-            let table = Table::new(rows, [Constraint::Percentage(60), Constraint::Percentage(35), Constraint::Length(2)])
-                .block(Block::default().title(title).borders(Borders::ALL))
-                .highlight_symbol("> ");
+            let table = Table::new(rows, [
+                Constraint::Percentage(55), // Name
+                Constraint::Percentage(30), // Branch
+                Constraint::Length(3),      // Status (Check/Dot)
+                Constraint::Length(2),      // Favorite
+            ])
+            .block(Block::default().title(title).borders(Borders::ALL))
+            .highlight_symbol("> ");
 
             f.render_stateful_widget(table, chunks[1], &mut app.project_state);
         }
