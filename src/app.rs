@@ -30,11 +30,12 @@ impl App {
         project_state.select(Some(0));
         let mut theme_state = ListState::default();
         theme_state.select(Some(0));
-        App {
+        
+        let mut app = App {
             mode: AppMode::MainMenu,
             previous_mode: None,
             config,
-            menu_items: vec!["Favorites", "Recent Projects", "Open Existing Project", "Clone Repository", "Open IntelliJ IDEA", "Choose Theme"],
+            menu_items: vec!["Favorites", "Recent Projects", "Open Existing Project", "Clone Repository", "Open IntelliJ IDEA", "Choose Theme", "Change Base Directory"],
             menu_state,
             categories: Vec::new(),
             category_state: ListState::default(),
@@ -60,6 +61,24 @@ impl App {
             search_query: String::new(),
             is_searching: false,
             pending_project: None,
+        };
+        
+        app.check_env();
+        app
+    }
+
+    fn check_env(&mut self) {
+        let base_path = PathBuf::from(&self.config.base_dir);
+        let idea_path = PathBuf::from(&self.config.idea_path);
+        
+        if !base_path.exists() {
+            self.status_message = Some((format!("Warning: base_dir '{}' not found!", self.config.base_dir), Instant::now()));
+        } else if !idea_path.exists() {
+            // Check if idea_path is just a command in PATH
+            let in_path = process::Command::new("which").arg(&self.config.idea_path).output().map(|o| o.status.success()).unwrap_or(false);
+            if !in_path {
+                self.status_message = Some((format!("Warning: idea_path '{}' not found!", self.config.idea_path), Instant::now()));
+            }
         }
     }
 
@@ -285,6 +304,7 @@ impl App {
                         self.mode = AppMode::ConfirmOpen;
                     }
                     Some(5) => { self.mode = AppMode::ThemeSelection; }
+                    Some(6) => { self.input = self.config.base_dir.clone(); self.mode = AppMode::ChangeBaseDir; }
                     _ => {}
                 }
                 Ok(false)
@@ -294,6 +314,20 @@ impl App {
                     self.config.theme = self.theme_items[i].to_string();
                     let _ = self.save_config();
                     self.mode = AppMode::MainMenu;
+                }
+                Ok(false)
+            }
+            AppMode::ChangeBaseDir => {
+                if !self.input.is_empty() {
+                    let new_path = PathBuf::from(&self.input);
+                    if new_path.exists() {
+                        self.config.base_dir = self.input.clone();
+                        let _ = self.save_config();
+                        self.status_message = Some((format!("Base directory updated to {}!", self.input), Instant::now()));
+                        self.mode = AppMode::MainMenu;
+                    } else {
+                        self.status_message = Some(("Error: Path does not exist!".to_string(), Instant::now()));
+                    }
                 }
                 Ok(false)
             }
@@ -384,7 +418,7 @@ impl App {
         self.search_query.clear();
         match self.mode {
             AppMode::MainMenu => {}
-            AppMode::CategorySelection | AppMode::InputUrl | AppMode::Favorites | AppMode::Recent | AppMode::ThemeSelection => self.mode = AppMode::MainMenu,
+            AppMode::CategorySelection | AppMode::InputUrl | AppMode::Favorites | AppMode::Recent | AppMode::ThemeSelection | AppMode::ChangeBaseDir => self.mode = AppMode::MainMenu,
             AppMode::ProjectSelection => self.mode = AppMode::CategorySelection,
             AppMode::CloneCategory => self.mode = AppMode::InputUrl,
             AppMode::ConfirmOpen | AppMode::Help => {

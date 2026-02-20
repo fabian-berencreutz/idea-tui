@@ -71,6 +71,14 @@ where <B as Backend>::Error: 'static {
                         KeyCode::Esc => { app.mode = AppMode::MainMenu; }
                         _ => {}
                     }
+                } else if app.mode == AppMode::ChangeBaseDir {
+                    match key.code {
+                        KeyCode::Enter => { app.on_enter()?; }
+                        KeyCode::Char(c) => { app.input.push(c); }
+                        KeyCode::Backspace => { app.input.pop(); }
+                        KeyCode::Esc => { app.mode = AppMode::MainMenu; }
+                        _ => {}
+                    }
                 } else {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),

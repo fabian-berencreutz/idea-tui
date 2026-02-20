@@ -1,25 +1,26 @@
 # idea-tui 🚀
 
-A high-performance, minimalist terminal-based project manager and launcher for IntelliJ IDEA Ultimate Edition, featuring a beautiful Catppuccin Mocha theme.
+A high-performance, minimalist terminal-based project manager and launcher for IntelliJ IDEA Ultimate Edition.
 
 ## ✨ Features
 
-- **📂 Structured Project Browser**: Navigate through your projects by category (e.g., `~/dev/java`).
-- **⭐️ Favorites**: Mark your most important projects with `f` for instant access.
-- **🕒 Recently Opened**: Automatically tracks and lists your last 10 projects.
-- **🔍 Smart Search**: Press `/` to filter any list. Confirm with `Enter` to browse the results.
-- **🌿 Real-time Git Status**: See your current branch (``), checkmarks (``) for clean repos, and dots (``) for pending changes.
-- **🖥️ Quick Terminal**: Press `t` to instantly open a new terminal window in the project's directory.
-- **🛡️ Confirmation Safety**: A built-in popup ensures you only launch IntelliJ when you actually mean to.
-- **🎨 Catppuccin Mocha**: Beautifully themed with Teal borders, Blue highlights, and Peach accents.
-- **⚙️ Fully Configurable**: Customize your paths and terminal commands via a simple TOML file.
+- **📂 Structured Project Browser**: Navigate through your projects by category (defaults to `~/dev`).
+- **🎨 11 Beautiful Themes**: Choose between **Darcula (default)**, Catppuccin, Nord, Tokyo Night, Gruvbox, and more.
+- **🛡️ Startup Validation**: Automatically checks if your project and IntelliJ paths are valid on launch.
+- **⭐️ Favorites**: Mark your most important projects for instant access.
+- **🕒 Recently Opened**: Tracks and lists your last 10 opened projects.
+- **🔍 Smart Search**: Press `/` to filter any list instantly.
+- **🌿 Real-time Git Status**: See current branch (``), clean status (``), and pending changes (``).
+- **🖥️ Quick Terminal**: Press `t` to open your preferred terminal in the project's directory.
+- **⚙️ Fully Configurable**: Customize paths, terminal commands, and themes via a TOML config.
 
 ## 🛠️ Prerequisites
 
-1.  **IntelliJ IDEA Ultimate**: Ensure it's installed (standard path: `/opt/intellij-idea-ultimate-edition/bin/idea`).
+1.  **IntelliJ IDEA Ultimate**: Ensure it's installed. The app will check both `/opt` and your system PATH.
 2.  **Nerd Fonts**: Required for icons (``, ``, ``, etc.).
-3.  **GitHub CLI (Optional)**: For seamless private repo cloning:
+3.  **GitHub CLI (Optional)**: For seamless repo cloning:
     ```bash
+    # Example for Arch Linux
     sudo pacman -S github-cli
     gh auth login
     ```
@@ -31,9 +32,9 @@ A high-performance, minimalist terminal-based project manager and launcher for I
     ```bash
     cargo build --release
     ```
-3.  Add an alias to your `~/.zshrc` (or `.bashrc`):
+3.  Add the binary to your PATH or create an alias in your shell config (`.zshrc` / `.bashrc`):
     ```bash
-    alias idea-tui='/home/fabian/dev/rust/idea-tui/target/release/idea-tui'
+    alias idea-tui='/path/to/idea-tui/target/release/idea-tui'
     ```
 
 ## ⌨️ Shortcuts
@@ -46,26 +47,32 @@ A high-performance, minimalist terminal-based project manager and launcher for I
 | **/** | Start search (Press **Enter** to browse results) |
 | **f** | Toggle Favorite |
 | **t** | Open Quick Terminal |
+| **r** | Refresh Git Status / View |
 | **?** | Toggle Help Screen |
 | **q** | Quit |
 | **Esc** | Clear Search / Main Menu / Close Popups |
 
 ## ⚙️ Configuration
 
-On first run, `idea-tui` creates a config file at:
+On first run, `idea-tui` creates a configuration file at:
 `~/.config/idea-tui/default-config.toml`
 
 ```toml
-base_dir = "/home/fabian/dev"
+base_dir = "/home/user/dev"
 idea_path = "/opt/intellij-idea-ultimate-edition/bin/idea"
-terminal_command = "kitty --directory" # Command to launch terminal + path
+terminal_command = "kitty --directory" # Command to launch terminal
+theme = "Darcula (default)"            # Choose from 11 available themes
 ```
+
+## 🎨 Themes
+
+Available themes:
+`Darcula (default)`, `Catppuccin Mocha`, `Dracula`, `Gruvbox`, `Nord`, `Solarized Dark`, `One Dark`, `Tokyo Night`, `Everforest`, `Rose Pine`, `Ayu Mirage`.
 
 ## 🧪 Development
 
-This project is built with **Rust** and **Ratatui**.
-
-```bash
-cargo run   # Run in debug mode
-cargo build # Build binary
-```
+This project is built with **Rust** and follows a modular architecture:
+- `app.rs`: State management and business logic.
+- `ui.rs`: TUI rendering and layout.
+- `models.rs`: Data structures and configuration.
+- `theme.rs`: Color definitions.

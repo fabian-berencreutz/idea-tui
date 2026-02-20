@@ -25,6 +25,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         AppMode::CloneCategory => " Select Category to Clone into ".to_string(),
         AppMode::Favorites => " Favorite Projects ".to_string(),
         AppMode::Recent => " Recently Opened Projects ".to_string(),
+        AppMode::ChangeBaseDir => " Update Base Directory ".to_string(),
     };
     f.render_widget(
         Paragraph::new(title_text)
@@ -100,6 +101,10 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             else { Line::from(vec![Span::styled(&app.input, Style::default().fg(theme.git_dirty))]) };
             f.render_widget(Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(" Git Repository URL ").border_style(Style::default().fg(theme.border))), chunks[1]);
         }
+        AppMode::ChangeBaseDir => {
+            let content = Line::from(vec![Span::styled(&app.input, Style::default().fg(theme.highlight))]);
+            f.render_widget(Paragraph::new(content).block(Block::default().borders(Borders::ALL).title(" New Base Directory Path ").border_style(Style::default().fg(theme.border))), chunks[1]);
+        }
     }
 
     if app.mode == AppMode::ConfirmOpen || app.mode == AppMode::Help {
@@ -138,6 +143,7 @@ Open {} in IntelliJ?
             AppMode::ConfirmOpen => "y: Yes  •  n: No / Cancel".to_string(),
             AppMode::Help => "Press any key to close".to_string(),
             AppMode::ThemeSelection => "Enter: Apply Theme  •  Backspace: Back".to_string(),
+            AppMode::ChangeBaseDir => "Enter: Save Path  •  Backspace: Back".to_string(),
             AppMode::MainMenu => "Enter / Right: Select  •  ?: Help  •  q: Quit".to_string(),
             _ => "/: Search  •  r: Refresh  •  t: Terminal  •  f: Favorite  •  Backspace: Back  •  ?: Help".to_string(),
         }

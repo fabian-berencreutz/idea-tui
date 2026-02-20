@@ -14,6 +14,7 @@ pub enum AppMode {
     ConfirmOpen,
     Help,
     ThemeSelection,
+    ChangeBaseDir,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -35,8 +36,11 @@ fn default_theme() -> String { "Darcula (default)".to_string() }
 
 impl Default for Config {
     fn default() -> Self {
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+        let base_dir = home.join("dev").to_string_lossy().to_string();
+        
         Self {
-            base_dir: "/home/fabian/dev".to_string(),
+            base_dir,
             idea_path: "/opt/intellij-idea-ultimate-edition/bin/idea".to_string(),
             terminal_command: default_terminal_cmd(),
             favorites: Vec::new(),
