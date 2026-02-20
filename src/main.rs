@@ -18,6 +18,7 @@ use std::{error::Error, io, fs, path::PathBuf, process, time::{Instant, Duration
 const MOCHA_TEAL: Color = Color::Rgb(148, 226, 213);
 const MOCHA_MAUVE: Color = Color::Rgb(203, 166, 247);
 const MOCHA_BLUE: Color = Color::Rgb(137, 180, 250);
+const MOCHA_SAPPHIRE: Color = Color::Rgb(116, 199, 236); // Added Sapphire
 const MOCHA_PEACH: Color = Color::Rgb(250, 179, 135);
 const MOCHA_GREEN: Color = Color::Rgb(166, 227, 161);
 const MOCHA_RED: Color = Color::Rgb(243, 139, 168);
@@ -43,7 +44,7 @@ struct Config {
     base_dir: String,
     idea_path: String,
     #[serde(default = "default_terminal_cmd")]
-    terminal_command: String, // New: Configurable terminal command
+    terminal_command: String,
     #[serde(default)]
     favorites: Vec<String>,
     #[serde(default)]
@@ -71,6 +72,7 @@ struct ProjectInfo {
     path: PathBuf,
     git_branch: Option<String>,
     has_changes: bool,
+    language: Option<String>, // New: Detected language
 }
 
 struct App {
@@ -169,6 +171,7 @@ impl App {
                         self.status_message = Some((format!("Added {} to favorites", filtered[i].name), Instant::now()));
                     }
                     let _ = self.save_config();
+                    if self.mode == AppMode::Favorites { self.load_favorites(); }
                 }
             }
         }
@@ -181,7 +184,8 @@ impl App {
             if path.exists() {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
                 let (branch, changes) = Self::get_git_info(&path);
-                favs.push(ProjectInfo { name, path, git_branch: branch, has_changes: changes });
+                let language = Self::detect_language(&path);
+                favs.push(ProjectInfo { name, path, git_branch: branch, has_changes: changes, language });
             }
         }
         favs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -197,7 +201,8 @@ impl App {
             if path.exists() {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
                 let (branch, changes) = Self::get_git_info(&path);
-                recent.push(ProjectInfo { name, path, git_branch: branch, has_changes: changes });
+                let language = Self::detect_language(&path);
+                recent.push(ProjectInfo { name, path, git_branch: branch, has_changes: changes, language });
             }
         }
         self.projects = recent;
@@ -229,6 +234,15 @@ impl App {
         (branch, status)
     }
 
+    fn detect_language(path: &PathBuf) -> Option<String> {
+        if path.join("Cargo.toml").exists() { return Some("Rust".to_string()); }
+        if path.join("pom.xml").exists() || path.join("build.gradle").exists() { return Some("Java".to_string()); }
+        if path.join("package.json").exists() { return Some("JS/TS".to_string()); }
+        if path.join("pyproject.toml").exists() || path.join("requirements.txt").exists() { return Some("Python".to_string()); }
+        if path.join("go.mod").exists() { return Some("Go".to_string()); }
+        None
+    }
+
     fn load_projects(&mut self, category: String) {
         let mut projs = Vec::new();
         let cat_path = PathBuf::from(&self.config.base_dir).join(&category);
@@ -239,7 +253,8 @@ impl App {
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                         if !name.starts_with('.') {
                             let (branch, changes) = Self::get_git_info(&path);
-                            projs.push(ProjectInfo { name: name.to_string(), path, git_branch: branch, has_changes: changes });
+                            let language = Self::detect_language(&path);
+                            projs.push(ProjectInfo { name: name.to_string(), path, git_branch: branch, has_changes: changes, language });
                         }
                     }
                 }
@@ -311,7 +326,7 @@ impl App {
                     Some(2) => { self.load_categories(); self.mode = AppMode::CategorySelection; }
                     Some(3) => { self.input.clear(); self.mode = AppMode::InputUrl; }
                     Some(4) => {
-                        self.pending_project = Some(ProjectInfo { name: "IntelliJ IDEA".to_string(), path: PathBuf::from("IDE"), git_branch: None, has_changes: false });
+                        self.pending_project = Some(ProjectInfo { name: "IntelliJ IDEA".to_string(), path: PathBuf::from("IDE"), git_branch: None, has_changes: false, language: None });
                         self.previous_mode = Some(AppMode::MainMenu);
                         self.mode = AppMode::ConfirmOpen;
                     }
@@ -337,7 +352,7 @@ impl App {
                 if let Some(i) = self.project_state.selected() {
                     if i < filtered.len() {
                         let proj = filtered[i];
-                        self.pending_project = Some(ProjectInfo { name: proj.name.clone(), path: proj.path.clone(), git_branch: None, has_changes: false });
+                        self.pending_project = Some(ProjectInfo { name: proj.name.clone(), path: proj.path.clone(), git_branch: None, has_changes: false, language: None });
                         self.previous_mode = Some(self.mode.clone());
                         self.mode = AppMode::ConfirmOpen;
                     }
@@ -478,7 +493,7 @@ where <B as Backend>::Error: 'static {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('f') => { app.toggle_favorite(); }
-                        KeyCode::Char('t') => { app.open_terminal()?; } // Quick Terminal
+                        KeyCode::Char('t') => { app.open_terminal()?; }
                         KeyCode::Char('/') => { if app.mode != AppMode::MainMenu { app.is_searching = true; } }
                         KeyCode::Char('?') => { app.previous_mode = Some(app.mode.clone()); app.mode = AppMode::Help; }
                         KeyCode::Down | KeyCode::Char('j') => app.next(),
@@ -552,7 +567,14 @@ fn ui(f: &mut Frame, app: &mut App) {
                 filtered.iter().enumerate().map(|(idx, p)| {
                     let is_selected = app.project_state.selected() == Some(idx);
                     let name_style = if is_selected { Style::default().fg(MOCHA_BLUE).add_modifier(Modifier::BOLD) } else { Style::default().fg(MOCHA_TEXT) };
-                    let name_cell = Cell::from(p.name.clone()).style(name_style);
+                    
+                    let mut name_spans = vec![Span::styled(p.name.clone(), name_style)];
+                    if let Some(lang) = &p.language {
+                        name_spans.push(Span::styled(format!(" [{}]", lang), Style::default().fg(MOCHA_SAPPHIRE).add_modifier(Modifier::ITALIC)));
+                    }
+                    
+                    let name_cell = Cell::from(Line::from(name_spans));
+                    
                     let git_status = if let Some(branch) = &p.git_branch {
                         let mut spans = vec![Span::styled("", Style::default().fg(MOCHA_TEAL))];
                         if p.has_changes { spans[0] = Span::styled("", Style::default().fg(MOCHA_PEACH)); }
@@ -562,7 +584,7 @@ fn ui(f: &mut Frame, app: &mut App) {
                     } else { Line::from(vec![Span::styled(" [no git]", Style::default().fg(MOCHA_OVERLAY))]) };
                     let is_fav = app.config.favorites.contains(&p.path.to_str().unwrap_or("").to_string());
                     let fav_cell = Cell::from(" ").style(Style::default().fg(if is_fav { MOCHA_PEACH } else { MOCHA_SURFACE }));
-                    Row::new(vec![Cell::from(name_cell), Cell::from(git_status), fav_cell])
+                    Row::new(vec![name_cell, Cell::from(git_status), fav_cell])
                 }).collect()
             };
             let title = match app.mode { AppMode::Favorites => " Favorites ", AppMode::Recent => " Recently Opened ", _ => " Projects " };
