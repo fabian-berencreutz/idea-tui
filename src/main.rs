@@ -18,7 +18,7 @@ use std::{error::Error, io, fs, path::PathBuf, process, time::{Instant, Duration
 const MOCHA_TEAL: Color = Color::Rgb(148, 226, 213);
 const MOCHA_MAUVE: Color = Color::Rgb(203, 166, 247);
 const MOCHA_BLUE: Color = Color::Rgb(137, 180, 250);
-const MOCHA_SAPPHIRE: Color = Color::Rgb(116, 199, 236); // Added Sapphire
+const MOCHA_SAPPHIRE: Color = Color::Rgb(116, 199, 236);
 const MOCHA_PEACH: Color = Color::Rgb(250, 179, 135);
 const MOCHA_GREEN: Color = Color::Rgb(166, 227, 161);
 const MOCHA_RED: Color = Color::Rgb(243, 139, 168);
@@ -72,7 +72,7 @@ struct ProjectInfo {
     path: PathBuf,
     git_branch: Option<String>,
     has_changes: bool,
-    language: Option<String>, // New: Detected language
+    language: Option<String>,
 }
 
 struct App {
@@ -130,6 +130,22 @@ impl App {
         let _ = self.save_config();
     }
 
+    fn refresh_current_view(&mut self) {
+        match self.mode {
+            AppMode::MainMenu => {}
+            AppMode::CategorySelection | AppMode::CloneCategory => self.load_categories(),
+            AppMode::ProjectSelection => {
+                if let Some(cat) = self.selected_category.clone() {
+                    self.load_projects(cat);
+                }
+            }
+            AppMode::Favorites => self.load_favorites(),
+            AppMode::Recent => self.load_recent(),
+            _ => {}
+        }
+        self.status_message = Some(("Status refreshed!".to_string(), Instant::now()));
+    }
+
     fn open_terminal(&mut self) -> Result<(), Box<dyn Error>> {
         if self.mode == AppMode::ProjectSelection || self.mode == AppMode::Favorites || self.mode == AppMode::Recent {
             let query = self.search_query.to_lowercase();
@@ -171,7 +187,6 @@ impl App {
                         self.status_message = Some((format!("Added {} to favorites", filtered[i].name), Instant::now()));
                     }
                     let _ = self.save_config();
-                    if self.mode == AppMode::Favorites { self.load_favorites(); }
                 }
             }
         }
@@ -494,6 +509,7 @@ where <B as Backend>::Error: 'static {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('f') => { app.toggle_favorite(); }
                         KeyCode::Char('t') => { app.open_terminal()?; }
+                        KeyCode::Char('r') => { app.refresh_current_view(); } // New: Refresh status
                         KeyCode::Char('/') => { if app.mode != AppMode::MainMenu { app.is_searching = true; } }
                         KeyCode::Char('?') => { app.previous_mode = Some(app.mode.clone()); app.mode = AppMode::Help; }
                         KeyCode::Down | KeyCode::Char('j') => app.next(),
@@ -584,7 +600,7 @@ fn ui(f: &mut Frame, app: &mut App) {
                     } else { Line::from(vec![Span::styled(" [no git]", Style::default().fg(MOCHA_OVERLAY))]) };
                     let is_fav = app.config.favorites.contains(&p.path.to_str().unwrap_or("").to_string());
                     let fav_cell = Cell::from(" ").style(Style::default().fg(if is_fav { MOCHA_PEACH } else { MOCHA_SURFACE }));
-                    Row::new(vec![name_cell, Cell::from(git_status), fav_cell])
+                    Row::new(vec![Cell::from(name_cell), Cell::from(git_status), fav_cell])
                 }).collect()
             };
             let title = match app.mode { AppMode::Favorites => " Favorites ", AppMode::Recent => " Recently Opened ", _ => " Projects " };
@@ -620,6 +636,7 @@ fn ui(f: &mut Frame, app: &mut App) {
                 Row::new(vec![Cell::from("/"), Cell::from("Search / Filter")]),
                 Row::new(vec![Cell::from("f"), Cell::from("Toggle Favorite")]),
                 Row::new(vec![Cell::from("t"), Cell::from("Open Quick Terminal")]),
+                Row::new(vec![Cell::from("r"), Cell::from("Refresh Git Status")]),
                 Row::new(vec![Cell::from("q"), Cell::from("Quit")]),
                 Row::new(vec![Cell::from("Esc"), Cell::from("Clear Search / Main Menu")]),
                 Row::new(vec![Cell::from("?"), Cell::from("Toggle Help")]),
@@ -637,7 +654,7 @@ fn ui(f: &mut Frame, app: &mut App) {
             AppMode::Help => "Press any key to close".to_string(),
             AppMode::MainMenu => "Enter / Right: Select  •  ?: Help  •  q: Quit".to_string(),
             AppMode::CategorySelection => "/: Search  •  Enter / Right: View Projects  •  Backspace: Back  •  q: Quit".to_string(),
-            _ => "/: Search  •  t: Terminal  •  f: Favorite  •  Backspace: Back  •  ?: Help".to_string(),
+            _ => "/: Search  •  r: Refresh  •  t: Terminal  •  f: Favorite  •  Backspace: Back  •  ?: Help".to_string(),
         }
     };
     f.render_widget(Paragraph::new(footer_text).style(if app.status_message.is_some() { Style::default().fg(MOCHA_GREEN).add_modifier(Modifier::BOLD) } else if app.is_searching { Style::default().fg(Color::Yellow) } else { Style::default().fg(MOCHA_TEXT) }).alignment(Alignment::Center), chunks[2]);
