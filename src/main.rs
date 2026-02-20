@@ -43,7 +43,7 @@ struct Config {
 }
 
 fn default_terminal_cmd() -> String { "kitty --directory".to_string() }
-fn default_theme() -> String { "Catppuccin Mocha".to_string() }
+fn default_theme() -> String { "Darcula (default)".to_string() }
 
 impl Default for Config {
     fn default() -> Self {
@@ -74,6 +74,19 @@ struct Theme {
 
 fn get_theme(name: &str) -> Theme {
     match name {
+        "Darcula (default)" => Theme {
+            border: Color::Rgb(104, 151, 187),     // IntelliJ Blue
+            header_text: Color::Rgb(169, 183, 198), // Default Text Grey
+            highlight: Color::Rgb(255, 198, 109),  // Yellow/Orange highlight
+            confirm_border: Color::Rgb(204, 120, 50), // Keyword Orange
+            git_branch: Color::Rgb(152, 118, 170), // Purple
+            git_clean: Color::Rgb(106, 135, 89),   // String Green
+            git_dirty: Color::Rgb(204, 120, 50),   // Warning Orange
+            no_git: Color::Rgb(96, 96, 96),        // Comment Grey
+            text: Color::Rgb(169, 183, 198),
+            surface: Color::Rgb(43, 43, 43),       // Background Grey
+            error: Color::Rgb(188, 63, 60),        // Error Red
+        },
         "Dracula" => Theme {
             border: Color::Rgb(189, 147, 249),
             header_text: Color::Rgb(248, 248, 242),
@@ -255,6 +268,7 @@ impl App {
             projects: Vec::new(),
             project_state,
             theme_items: vec![
+                "Darcula (default)",
                 "Catppuccin Mocha", 
                 "Dracula", 
                 "Gruvbox", 
