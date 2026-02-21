@@ -2,6 +2,11 @@
 name = "idea-tui"
 version = "0.1.0"
 edition = "2024"
+description = "A terminal-based launcher for IntelliJ IDEA projects."
+repository = "https://github.com/your-username/idea-tui"
+license = "MIT"
+keywords = ["tui", "cli", "intellij", "jetbrains", "launcher"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 confy = "2.0.0"
