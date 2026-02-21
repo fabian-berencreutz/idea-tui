@@ -1,3 +1,4 @@
+mod error;
 mod models;
 mod theme;
 mod app;
@@ -12,35 +13,36 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     Terminal,
 };
-use std::{error::Error, io, process, time::Duration};
+use std::{io, process, time::Duration};
 
 use crate::app::App;
 use crate::models::{AppMode, Config};
 use crate::ui::ui;
+use crate::error::{Result, IdeaError};
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let cfg: Config = confy::load("idea-tui", None)?;
-    enable_raw_mode()?;
+    enable_raw_mode().map_err(|e| crate::error::IdeaError::Io(e))?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture).map_err(|e| crate::error::IdeaError::Io(e))?;
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut terminal = Terminal::new(backend).map_err(|e| crate::error::IdeaError::Io(e))?;
     let mut app = App::new(cfg);
     let res = run_app(&mut terminal, &mut app);
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
-    terminal.show_cursor()?;
+    disable_raw_mode().map_err(|e| crate::error::IdeaError::Io(e))?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture).map_err(|e| crate::error::IdeaError::Io(e))?;
+    terminal.show_cursor().map_err(|e| crate::error::IdeaError::Io(e))?;
     if let Err(err) = res { println!("{:?}", err); process::exit(1); }
     Ok(())
 }
 
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<(), Box<dyn Error>> 
-where <B as Backend>::Error: 'static {
+fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> 
+{
     loop {
         if let Some((_, time)) = app.status_message {
             if time.elapsed() > Duration::from_secs(3) { app.status_message = None; }
         }
-        terminal.draw(|f| ui(f, app))?;
+        terminal.draw(|f| ui(f, app)).map_err(|e| IdeaError::Terminal(e.to_string()))?;
         if event::poll(Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 if app.mode == AppMode::ConfirmOpen {

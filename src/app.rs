@@ -1,6 +1,7 @@
-use std::{error::Error, fs, path::PathBuf, process, time::Instant};
+use std::{fs, path::PathBuf, process, time::Instant};
 use ratatui::widgets::{ListState, TableState};
 use crate::models::{AppMode, Config, ProjectInfo};
+use crate::error::{Result, IdeaError};
 
 pub struct App {
     pub mode: AppMode,
@@ -82,7 +83,7 @@ impl App {
         }
     }
 
-    pub fn save_config(&self) -> Result<(), Box<dyn Error>> {
+    pub fn save_config(&self) -> Result<()> {
         confy::store("idea-tui", None, &self.config)?;
         Ok(())
     }
@@ -106,7 +107,7 @@ impl App {
         self.status_message = Some(("Status refreshed!".to_string(), Instant::now()));
     }
 
-    pub fn open_terminal(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn open_terminal(&mut self) -> Result<()> {
         let query = self.search_query.to_lowercase();
         let filtered: Vec<&ProjectInfo> = self.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).collect();
         if let Some(i) = self.project_state.selected() {
@@ -116,7 +117,7 @@ impl App {
                 if !cmd_parts.is_empty() {
                     let mut command = process::Command::new(cmd_parts[0]);
                     for arg in &cmd_parts[1..] { command.arg(arg); }
-                    command.arg(path).spawn()?;
+                    command.arg(path).spawn().map_err(|e| IdeaError::Spawn(e.to_string()))?;
                     self.status_message = Some((format!("Opened terminal for {}!", filtered[i].name), Instant::now()));
                 }
             }
@@ -290,7 +291,7 @@ impl App {
         }
     }
 
-    pub fn on_enter(&mut self) -> Result<bool, Box<dyn Error>> {
+    pub fn on_enter(&mut self) -> Result<()> {
         match self.mode {
             AppMode::MainMenu => {
                 match self.menu_state.selected() {
@@ -307,7 +308,6 @@ impl App {
                     Some(6) => { self.input = self.config.base_dir.clone(); self.mode = AppMode::ChangeBaseDir; }
                     _ => {}
                 }
-                Ok(false)
             }
             AppMode::ThemeSelection => {
                 if let Some(i) = self.theme_state.selected() {
@@ -315,7 +315,6 @@ impl App {
                     let _ = self.save_config();
                     self.mode = AppMode::MainMenu;
                 }
-                Ok(false)
             }
             AppMode::ChangeBaseDir => {
                 if !self.input.is_empty() {
@@ -329,7 +328,6 @@ impl App {
                         self.status_message = Some(("Error: Path does not exist!".to_string(), Instant::now()));
                     }
                 }
-                Ok(false)
             }
             AppMode::CategorySelection => {
                 let filtered = self.get_filtered_categories();
@@ -341,7 +339,6 @@ impl App {
                         self.is_searching = false; self.search_query.clear();
                     }
                 }
-                Ok(false)
             }
             AppMode::ProjectSelection | AppMode::Favorites | AppMode::Recent => {
                 let query = self.search_query.to_lowercase();
@@ -354,11 +351,9 @@ impl App {
                         self.mode = AppMode::ConfirmOpen;
                     }
                 }
-                Ok(false)
             }
             AppMode::InputUrl => {
                 if !self.input.is_empty() { self.load_categories(); self.mode = AppMode::CloneCategory; }
-                Ok(false)
             }
             AppMode::CloneCategory => {
                 let filtered = self.get_filtered_categories();
@@ -369,22 +364,22 @@ impl App {
                         self.is_searching = false; self.search_query.clear();
                     }
                 }
-                Ok(false)
             }
-            AppMode::ConfirmOpen | AppMode::Help => Ok(false),
+            _ => {}
         }
+        Ok(())
     }
 
-    pub fn execute_pending_open(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn execute_pending_open(&mut self) -> Result<()> {
         if let Some(proj) = self.pending_project.take() {
             if proj.name == "IntelliJ IDEA" {
-                process::Command::new(&self.config.idea_path).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
+                process::Command::new(&self.config.idea_path).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn().map_err(|e| IdeaError::Spawn(e.to_string()))?;
                 self.status_message = Some(("Opening IntelliJ IDEA...".to_string(), Instant::now()));
             } else {
                 let path_str = proj.path.to_str().unwrap_or("").to_string();
                 let name = proj.name.clone();
                 self.add_to_recent(path_str.clone());
-                process::Command::new(&self.config.idea_path).arg(path_str).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
+                process::Command::new(&self.config.idea_path).arg(path_str).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn().map_err(|e| IdeaError::Spawn(e.to_string()))?;
                 self.status_message = Some((format!("Launched {}!", name), Instant::now()));
             }
         }
@@ -392,7 +387,7 @@ impl App {
         Ok(())
     }
 
-    pub fn clone_repo(&mut self, category: String) -> Result<(), Box<dyn Error>> {
+    pub fn clone_repo(&mut self, category: String) -> Result<()> {
         let clone_dir = PathBuf::from(&self.config.base_dir).join(&category);
         let url = self.input.clone();
         let project_name = url.split('/').last().and_then(|s| s.strip_suffix(".git").or(Some(s))).unwrap_or("new-project");
@@ -401,15 +396,17 @@ impl App {
         command.arg("repo").arg("clone").arg(&url).arg("--").arg("--quiet").current_dir(&clone_dir).stdout(process::Stdio::null()).stderr(process::Stdio::null());
         let status = match command.status() {
             Ok(s) if s.success() => Ok(s),
-            _ => process::Command::new("git").arg("clone").arg("--quiet").arg(&url).current_dir(&clone_dir).stdout(process::Stdio::null()).stderr(process::Stdio::null()).status()
+            _ => process::Command::new("git").arg("clone").arg("--quiet").arg(&url).current_dir(&clone_dir).stdout(process::Stdio::null()).stderr(process::Stdio::null()).status().map_err(|e| IdeaError::Git(e.to_string()))
         }?;
         if status.success() {
             let project_path = clone_dir.join(project_name);
             self.add_to_recent(project_path.to_str().unwrap_or("").to_string());
-            process::Command::new(&self.config.idea_path).arg(project_path.to_str().unwrap_or("")).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn()?;
+            process::Command::new(&self.config.idea_path).arg(project_path.to_str().unwrap_or("")).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn().map_err(|e| IdeaError::Spawn(e.to_string()))?;
             self.status_message = Some((format!("Cloned and opened {}!", project_name), Instant::now()));
             self.mode = AppMode::MainMenu;
-        } else { self.status_message = Some(("Clone failed!".to_string(), Instant::now())); }
+        } else { 
+            return Err(IdeaError::CloneFailed(project_name.to_string()));
+        }
         Ok(())
     }
 
