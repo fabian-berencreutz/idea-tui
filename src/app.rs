@@ -427,3 +427,72 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_detect_language_rust() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("Cargo.toml"), "").unwrap();
+        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Rust".to_string()));
+    }
+
+    #[test]
+    fn test_detect_language_java_pom() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("pom.xml"), "").unwrap();
+        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Java".to_string()));
+    }
+
+    #[test]
+    fn test_detect_language_java_gradle() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("build.gradle"), "").unwrap();
+        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Java".to_string()));
+    }
+
+    #[test]
+    fn test_detect_language_javascript_typescript() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("package.json"), "").unwrap();
+        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("JS/TS".to_string()));
+    }
+
+    #[test]
+    fn test_detect_language_python_requirements() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("requirements.txt"), "").unwrap();
+        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Python".to_string()));
+    }
+
+    #[test]
+    fn test_detect_language_python_pyproject() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("pyproject.toml"), "").unwrap();
+        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Python".to_string()));
+    }
+
+    #[test]
+    fn test_detect_language_go() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("go.mod"), "").unwrap();
+        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Go".to_string()));
+    }
+
+    #[test]
+    fn test_detect_language_unknown() {
+        let dir = tempdir().unwrap();
+        // No language-specific files
+        assert_eq!(App::detect_language(&dir.path().to_path_buf()), None);
+    }
+
+    #[test]
+    fn test_detect_language_empty_dir() {
+        let dir = tempdir().unwrap();
+        assert_eq!(App::detect_language(&dir.path().to_path_buf()), None);
+    }
+}
