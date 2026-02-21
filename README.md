@@ -14,6 +14,10 @@ A high-performance, minimalist terminal-based project manager and launcher for I
 - **🖥️ Quick Terminal**: Press `t` to open your preferred terminal in the project's directory.
 - **⚙️ Fully Configurable**: Customize paths, terminal commands, and themes via a TOML config.
 
+## 📸 Screenshots
+
+![A screenshot of idea-tui in action, showing the main menu and project list with git status and language icons.](assets/idea-tui.png)
+
 ## 🛠️ Prerequisites
 
 1.  **IntelliJ IDEA Ultimate**: Ensure it's installed. The app will check both `/opt` and your system PATH.
