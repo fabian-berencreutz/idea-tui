@@ -32,10 +32,17 @@ impl App {
         let mut theme_state = ListState::default();
         theme_state.select(Some(0));
         
+        let base_path = PathBuf::from(&config.base_dir);
+        let (initial_mode, initial_status) = if !base_path.exists() {
+            (AppMode::ChangeBaseDir, Some((format!("Welcome! Your base_dir '{}' was not found. Please set a valid path.", config.base_dir), Instant::now())))
+        } else {
+            (AppMode::MainMenu, None)
+        };
+
         let mut app = App {
-            mode: AppMode::MainMenu,
+            mode: initial_mode,
             previous_mode: None,
-            config,
+            config: config.clone(),
             menu_items: vec!["Favorites", "Recent Projects", "Open Existing Project", "Clone Repository", "Open IntelliJ IDEA", "Choose Theme", "Change Base Directory"],
             menu_state,
             categories: Vec::new(),
@@ -57,31 +64,26 @@ impl App {
                 "Ayu Mirage"
             ],
             theme_state,
-            input: String::new(),
-            status_message: None,
+            input: config.base_dir.clone(),
+            status_message: initial_status,
             search_query: String::new(),
             is_searching: false,
             pending_project: None,
         };
+
+        // Still check for IDEA path, but don't block setup for it.
+        let idea_path = PathBuf::from(&app.config.idea_path);
+        if !idea_path.exists() {
+            let in_path = process::Command::new("which").arg(&app.config.idea_path).output().map(|o| o.status.success()).unwrap_or(false);
+            if !in_path {
+                app.status_message = Some((format!("Warning: idea_path '{}' not found!", app.config.idea_path), Instant::now()));
+            }
+        }
         
-        app.check_env();
         app
     }
 
-    fn check_env(&mut self) {
-        let base_path = PathBuf::from(&self.config.base_dir);
-        let idea_path = PathBuf::from(&self.config.idea_path);
-        
-        if !base_path.exists() {
-            self.status_message = Some((format!("Warning: base_dir '{}' not found!", self.config.base_dir), Instant::now()));
-        } else if !idea_path.exists() {
-            // Check if idea_path is just a command in PATH
-            let in_path = process::Command::new("which").arg(&self.config.idea_path).output().map(|o| o.status.success()).unwrap_or(false);
-            if !in_path {
-                self.status_message = Some((format!("Warning: idea_path '{}' not found!", self.config.idea_path), Instant::now()));
-            }
-        }
-    }
+
 
     pub fn save_config(&self) -> Result<()> {
         confy::store("idea-tui", None, &self.config)?;
