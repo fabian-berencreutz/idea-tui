@@ -1,6 +1,6 @@
-use serde_derive::{Serialize, Deserialize};
-use std::path::PathBuf;
 use ratatui::style::Color;
+use serde_derive::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum AppMode {
@@ -31,14 +31,18 @@ pub struct Config {
     pub theme: String,
 }
 
-fn default_terminal_cmd() -> String { "kitty --directory".to_string() }
-fn default_theme() -> String { "Darcula (default)".to_string() }
+fn default_terminal_cmd() -> String {
+    "kitty --directory".to_string()
+}
+fn default_theme() -> String {
+    "Darcula (default)".to_string()
+}
 
 impl Default for Config {
     fn default() -> Self {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
         let base_dir = home.join("dev").to_string_lossy().to_string();
-        
+
         Self {
             base_dir,
             idea_path: "/opt/intellij-idea-ultimate-edition/bin/idea".to_string(),

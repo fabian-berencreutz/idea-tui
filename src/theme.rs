@@ -1,5 +1,5 @@
-use ratatui::style::Color;
 use crate::models::Theme;
+use ratatui::style::Color;
 
 pub fn get_theme(name: &str) -> Theme {
     match name {

@@ -1,7 +1,7 @@
-use std::{fs, path::PathBuf, process, time::Instant};
-use ratatui::widgets::{ListState, TableState};
+use crate::error::{IdeaError, Result};
 use crate::models::{AppMode, Config, ProjectInfo};
-use crate::error::{Result, IdeaError};
+use ratatui::widgets::{ListState, TableState};
+use std::{fs, path::{PathBuf, Path}, process, time::Instant};
 
 pub struct App {
     pub mode: AppMode,
@@ -31,10 +31,19 @@ impl App {
         project_state.select(Some(0));
         let mut theme_state = ListState::default();
         theme_state.select(Some(0));
-        
+
         let base_path = PathBuf::from(&config.base_dir);
         let (initial_mode, initial_status) = if !base_path.exists() {
-            (AppMode::ChangeBaseDir, Some((format!("Welcome! Your base_dir '{}' was not found. Please set a valid path.", config.base_dir), Instant::now())))
+            (
+                AppMode::ChangeBaseDir,
+                Some((
+                    format!(
+                        "Welcome! Your base_dir '{}' was not found. Please set a valid path.",
+                        config.base_dir
+                    ),
+                    Instant::now(),
+                )),
+            )
         } else {
             (AppMode::MainMenu, None)
         };
@@ -43,7 +52,15 @@ impl App {
             mode: initial_mode,
             previous_mode: None,
             config: config.clone(),
-            menu_items: vec!["Favorites", "Recent Projects", "Open Existing Project", "Clone Repository", "Open IntelliJ IDEA", "Choose Theme", "Change Base Directory"],
+            menu_items: vec![
+                "Favorites",
+                "Recent Projects",
+                "Open Existing Project",
+                "Clone Repository",
+                "Open IntelliJ IDEA",
+                "Choose Theme",
+                "Change Base Directory",
+            ],
             menu_state,
             categories: Vec::new(),
             category_state: ListState::default(),
@@ -52,16 +69,16 @@ impl App {
             project_state,
             theme_items: vec![
                 "Darcula (default)",
-                "Catppuccin Mocha", 
-                "Dracula", 
-                "Gruvbox", 
-                "Nord", 
-                "Solarized Dark", 
-                "One Dark", 
-                "Tokyo Night", 
-                "Everforest", 
-                "Rose Pine", 
-                "Ayu Mirage"
+                "Catppuccin Mocha",
+                "Dracula",
+                "Gruvbox",
+                "Nord",
+                "Solarized Dark",
+                "One Dark",
+                "Tokyo Night",
+                "Everforest",
+                "Rose Pine",
+                "Ayu Mirage",
             ],
             theme_state,
             input: config.base_dir.clone(),
@@ -74,16 +91,21 @@ impl App {
         // Still check for IDEA path, but don't block setup for it.
         let idea_path = PathBuf::from(&app.config.idea_path);
         if !idea_path.exists() {
-            let in_path = process::Command::new("which").arg(&app.config.idea_path).output().map(|o| o.status.success()).unwrap_or(false);
+            let in_path = process::Command::new("which")
+                .arg(&app.config.idea_path)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
             if !in_path {
-                app.status_message = Some((format!("Warning: idea_path '{}' not found!", app.config.idea_path), Instant::now()));
+                app.status_message = Some((
+                    format!("Warning: idea_path '{}' not found!", app.config.idea_path),
+                    Instant::now(),
+                ));
             }
         }
-        
+
         app
     }
-
-
 
     pub fn save_config(&self) -> Result<()> {
         confy::store("idea-tui", None, &self.config)?;
@@ -101,7 +123,11 @@ impl App {
         match self.mode {
             AppMode::MainMenu | AppMode::ThemeSelection => {}
             AppMode::CategorySelection | AppMode::CloneCategory => self.load_categories(),
-            AppMode::ProjectSelection => if let Some(cat) = self.selected_category.clone() { self.load_projects(cat); }
+            AppMode::ProjectSelection => {
+                if let Some(cat) = self.selected_category.clone() {
+                    self.load_projects(cat);
+                }
+            }
             AppMode::Favorites => self.load_favorites(),
             AppMode::Recent => self.load_recent(),
             _ => {}
@@ -111,17 +137,28 @@ impl App {
 
     pub fn open_terminal(&mut self) -> Result<()> {
         let query = self.search_query.to_lowercase();
-        let filtered: Vec<&ProjectInfo> = self.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).collect();
-        if let Some(i) = self.project_state.selected() {
-            if i < filtered.len() {
-                let path = filtered[i].path.to_str().unwrap_or("");
-                let cmd_parts: Vec<&str> = self.config.terminal_command.split_whitespace().collect();
-                if !cmd_parts.is_empty() {
-                    let mut command = process::Command::new(cmd_parts[0]);
-                    for arg in &cmd_parts[1..] { command.arg(arg); }
-                    command.arg(path).spawn().map_err(|e| IdeaError::Spawn(e.to_string()))?;
-                    self.status_message = Some((format!("Opened terminal for {}!", filtered[i].name), Instant::now()));
+        let filtered: Vec<&ProjectInfo> = self
+            .projects
+            .iter()
+            .filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query))
+            .collect();
+        if let Some(i) = self.project_state.selected() && i < filtered.len() {
+            let path = filtered[i].path.to_str().unwrap_or("");
+            let cmd_parts: Vec<&str> =
+                self.config.terminal_command.split_whitespace().collect();
+            if !cmd_parts.is_empty() {
+                let mut command = process::Command::new(cmd_parts[0]);
+                for arg in &cmd_parts[1..] {
+                    command.arg(arg);
                 }
+                command
+                    .arg(path)
+                    .spawn()
+                    .map_err(|e| IdeaError::Spawn(e.to_string()))?;
+                self.status_message = Some((
+                    format!("Opened terminal for {}!", filtered[i].name),
+                    Instant::now(),
+                ));
             }
         }
         Ok(())
@@ -129,19 +166,27 @@ impl App {
 
     pub fn toggle_favorite(&mut self) {
         let query = self.search_query.to_lowercase();
-        let filtered: Vec<&ProjectInfo> = self.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).collect();
-        if let Some(i) = self.project_state.selected() {
-            if i < filtered.len() {
-                let path_str = filtered[i].path.to_str().unwrap_or("").to_string();
-                if self.config.favorites.contains(&path_str) {
-                    self.config.favorites.retain(|x| x != &path_str);
-                    self.status_message = Some((format!("Removed {} from favorites", filtered[i].name), Instant::now()));
-                } else {
-                    self.config.favorites.push(path_str);
-                    self.status_message = Some((format!("Added {} to favorites", filtered[i].name), Instant::now()));
-                }
-                let _ = self.save_config();
+        let filtered: Vec<&ProjectInfo> = self
+            .projects
+            .iter()
+            .filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query))
+            .collect();
+        if let Some(i) = self.project_state.selected() && i < filtered.len() {
+            let path_str = filtered[i].path.to_str().unwrap_or("").to_string();
+            if self.config.favorites.contains(&path_str) {
+                self.config.favorites.retain(|x| x != &path_str);
+                self.status_message = Some((
+                    format!("Removed {} from favorites", filtered[i].name),
+                    Instant::now(),
+                ));
+            } else {
+                self.config.favorites.push(path_str);
+                self.status_message = Some((
+                    format!("Added {} to favorites", filtered[i].name),
+                    Instant::now(),
+                ));
             }
+            let _ = self.save_config();
         }
     }
 
@@ -150,15 +195,29 @@ impl App {
         for path_str in &self.config.favorites {
             let path = PathBuf::from(path_str);
             if path.exists() {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
                 let (branch, changes) = Self::get_git_info(&path);
                 let language = Self::detect_language(&path);
-                favs.push(ProjectInfo { name, path, git_branch: branch, has_changes: changes, language });
+                favs.push(ProjectInfo {
+                    name,
+                    path,
+                    git_branch: branch,
+                    has_changes: changes,
+                    language,
+                });
             }
         }
-        favs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        favs.sort_by_key(|a| a.name.to_lowercase());
         self.projects = favs;
-        self.project_state.select(if self.projects.is_empty() { None } else { Some(0) });
+        self.project_state.select(if self.projects.is_empty() {
+            None
+        } else {
+            Some(0)
+        });
         self.selected_category = None;
     }
 
@@ -167,14 +226,28 @@ impl App {
         for path_str in &self.config.recent_projects {
             let path = PathBuf::from(path_str);
             if path.exists() {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
                 let (branch, changes) = Self::get_git_info(&path);
                 let language = Self::detect_language(&path);
-                recent.push(ProjectInfo { name, path, git_branch: branch, has_changes: changes, language });
+                recent.push(ProjectInfo {
+                    name,
+                    path,
+                    git_branch: branch,
+                    has_changes: changes,
+                    language,
+                });
             }
         }
         self.projects = recent;
-        self.project_state.select(if self.projects.is_empty() { None } else { Some(0) });
+        self.project_state.select(if self.projects.is_empty() {
+            None
+        } else {
+            Some(0)
+        });
         self.selected_category = None;
     }
 
@@ -183,31 +256,62 @@ impl App {
         if let Ok(entries) = fs::read_dir(&self.config.base_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if !name.starts_with('.') { cats.push(name.to_string()); }
-                    }
+                if path.is_dir()
+                    && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && !name.starts_with('.')
+                {
+                    cats.push(name.to_string());
                 }
             }
         }
-        cats.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        cats.sort_by_key(|a| a.to_lowercase());
         self.categories = cats;
-        self.category_state.select(if self.categories.is_empty() { None } else { Some(0) });
+        self.category_state.select(if self.categories.is_empty() {
+            None
+        } else {
+            Some(0)
+        });
     }
 
-    pub fn get_git_info(path: &PathBuf) -> (Option<String>, bool) {
-        if !path.join(".git").exists() { return (None, false); }
-        let branch = process::Command::new("git").arg("branch").arg("--show-current").current_dir(path).output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).map(|s| s.trim().to_string());
-        let status = process::Command::new("git").arg("status").arg("--porcelain").current_dir(path).output().ok().map(|out| !out.stdout.is_empty()).unwrap_or(false);
+    pub fn get_git_info(path: &Path) -> (Option<String>, bool) {
+        if !path.join(".git").exists() {
+            return (None, false);
+        }
+        let branch = process::Command::new("git")
+            .arg("branch")
+            .arg("--show-current")
+            .current_dir(path)
+            .output()
+            .ok()
+            .and_then(|out| String::from_utf8(out.stdout).ok())
+            .map(|s| s.trim().to_string());
+        let status = process::Command::new("git")
+            .arg("status")
+            .arg("--porcelain")
+            .current_dir(path)
+            .output()
+            .ok()
+            .map(|out| !out.stdout.is_empty())
+            .unwrap_or(false);
         (branch, status)
     }
 
-    pub fn detect_language(path: &PathBuf) -> Option<String> {
-        if path.join("Cargo.toml").exists() { return Some("Rust".to_string()); }
-        if path.join("pom.xml").exists() || path.join("build.gradle").exists() { return Some("Java".to_string()); }
-        if path.join("package.json").exists() { return Some("JS/TS".to_string()); }
-        if path.join("pyproject.toml").exists() || path.join("requirements.txt").exists() { return Some("Python".to_string()); }
-        if path.join("go.mod").exists() { return Some("Go".to_string()); }
+    pub fn detect_language(path: &Path) -> Option<String> {
+        if path.join("Cargo.toml").exists() {
+            return Some("Rust".to_string());
+        }
+        if path.join("pom.xml").exists() || path.join("build.gradle").exists() {
+            return Some("Java".to_string());
+        }
+        if path.join("package.json").exists() {
+            return Some("JS/TS".to_string());
+        }
+        if path.join("pyproject.toml").exists() || path.join("requirements.txt").exists() {
+            return Some("Python".to_string());
+        }
+        if path.join("go.mod").exists() {
+            return Some("Go".to_string());
+        }
         None
     }
 
@@ -217,49 +321,109 @@ impl App {
         if let Ok(entries) = fs::read_dir(cat_path) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if !name.starts_with('.') {
-                            let (branch, changes) = Self::get_git_info(&path);
-                            let language = Self::detect_language(&path);
-                            projs.push(ProjectInfo { name: name.to_string(), path, git_branch: branch, has_changes: changes, language });
-                        }
-                    }
+                if path.is_dir()
+                    && let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && !name.starts_with('.')
+                {
+                    let (branch, changes) = Self::get_git_info(&path);
+                    let language = Self::detect_language(&path);
+                    projs.push(ProjectInfo {
+                        name: name.to_string(),
+                        path,
+                        git_branch: branch,
+                        has_changes: changes,
+                        language,
+                    });
                 }
             }
         }
-        projs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        projs.sort_by_key(|a| a.name.to_lowercase());
         self.projects = projs;
-        self.project_state.select(if self.projects.is_empty() { None } else { Some(0) });
+        self.project_state.select(if self.projects.is_empty() {
+            None
+        } else {
+            Some(0)
+        });
         self.selected_category = Some(category);
     }
 
     pub fn get_filtered_categories(&self) -> Vec<String> {
-        if self.search_query.is_empty() { self.categories.clone() } 
-        else { self.categories.iter().filter(|c| c.to_lowercase().contains(&self.search_query.to_lowercase())).cloned().collect() }
+        if self.search_query.is_empty() {
+            self.categories.clone()
+        } else {
+            self.categories
+                .iter()
+                .filter(|c| c.to_lowercase().contains(&self.search_query.to_lowercase()))
+                .cloned()
+                .collect()
+        }
     }
 
     pub fn next(&mut self) {
         match self.mode {
             AppMode::MainMenu => {
-                let i = match self.menu_state.selected() { Some(i) => if i >= self.menu_items.len() - 1 { 0 } else { i + 1 }, None => 0 };
+                let i = match self.menu_state.selected() {
+                    Some(i) => {
+                        if i >= self.menu_items.len() - 1 {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
                 self.menu_state.select(Some(i));
             }
             AppMode::ThemeSelection => {
-                let i = match self.theme_state.selected() { Some(i) => if i >= self.theme_items.len() - 1 { 0 } else { i + 1 }, None => 0 };
+                let i = match self.theme_state.selected() {
+                    Some(i) => {
+                        if i >= self.theme_items.len() - 1 {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
                 self.theme_state.select(Some(i));
             }
             AppMode::CategorySelection | AppMode::CloneCategory => {
                 let len = self.get_filtered_categories().len();
-                if len == 0 { return; }
-                let i = match self.category_state.selected() { Some(i) => if i >= len - 1 { 0 } else { i + 1 }, None => 0 };
+                if len == 0 {
+                    return;
+                }
+                let i = match self.category_state.selected() {
+                    Some(i) => {
+                        if i >= len - 1 {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
                 self.category_state.select(Some(i));
             }
             AppMode::ProjectSelection | AppMode::Favorites | AppMode::Recent => {
                 let query = self.search_query.to_lowercase();
-                let len = self.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).count();
-                if len == 0 { return; }
-                let i = match self.project_state.selected() { Some(i) => if i >= len - 1 { 0 } else { i + 1 }, None => 0 };
+                let len = self
+                    .projects
+                    .iter()
+                    .filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query))
+                    .count();
+                if len == 0 {
+                    return;
+                }
+                let i = match self.project_state.selected() {
+                    Some(i) => {
+                        if i >= len - 1 {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
                 self.project_state.select(Some(i));
             }
             _ => {}
@@ -269,24 +433,68 @@ impl App {
     pub fn previous(&mut self) {
         match self.mode {
             AppMode::MainMenu => {
-                let i = match self.menu_state.selected() { Some(i) => if i == 0 { self.menu_items.len() - 1 } else { i - 1 }, None => 0 };
+                let i = match self.menu_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            self.menu_items.len() - 1
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
                 self.menu_state.select(Some(i));
             }
             AppMode::ThemeSelection => {
-                let i = match self.theme_state.selected() { Some(i) => if i == 0 { self.theme_items.len() - 1 } else { i - 1 }, None => 0 };
+                let i = match self.theme_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            self.theme_items.len() - 1
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
                 self.theme_state.select(Some(i));
             }
             AppMode::CategorySelection | AppMode::CloneCategory => {
                 let len = self.get_filtered_categories().len();
-                if len == 0 { return; }
-                let i = match self.category_state.selected() { Some(i) => if i == 0 { len - 1 } else { i - 1 }, None => 0 };
+                if len == 0 {
+                    return;
+                }
+                let i = match self.category_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            len - 1
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
                 self.category_state.select(Some(i));
             }
             AppMode::ProjectSelection | AppMode::Favorites | AppMode::Recent => {
                 let query = self.search_query.to_lowercase();
-                let len = self.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).count();
-                if len == 0 { return; }
-                let i = match self.project_state.selected() { Some(i) => if i == 0 { len - 1 } else { i - 1 }, None => 0 };
+                let len = self
+                    .projects
+                    .iter()
+                    .filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query))
+                    .count();
+                if len == 0 {
+                    return;
+                }
+                let i = match self.project_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            len - 1
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
                 self.project_state.select(Some(i));
             }
             _ => {}
@@ -295,22 +503,43 @@ impl App {
 
     pub fn on_enter(&mut self) -> Result<()> {
         match self.mode {
-            AppMode::MainMenu => {
-                match self.menu_state.selected() {
-                    Some(0) => { self.load_favorites(); self.mode = AppMode::Favorites; }
-                    Some(1) => { self.load_recent(); self.mode = AppMode::Recent; }
-                    Some(2) => { self.load_categories(); self.mode = AppMode::CategorySelection; }
-                    Some(3) => { self.input.clear(); self.mode = AppMode::InputUrl; }
-                    Some(4) => {
-                        self.pending_project = Some(ProjectInfo { name: "IntelliJ IDEA".to_string(), path: PathBuf::from("IDE"), git_branch: None, has_changes: false, language: None });
-                        self.previous_mode = Some(AppMode::MainMenu);
-                        self.mode = AppMode::ConfirmOpen;
-                    }
-                    Some(5) => { self.mode = AppMode::ThemeSelection; }
-                    Some(6) => { self.input = self.config.base_dir.clone(); self.mode = AppMode::ChangeBaseDir; }
-                    _ => {}
+            AppMode::MainMenu => match self.menu_state.selected() {
+                Some(0) => {
+                    self.load_favorites();
+                    self.mode = AppMode::Favorites;
                 }
-            }
+                Some(1) => {
+                    self.load_recent();
+                    self.mode = AppMode::Recent;
+                }
+                Some(2) => {
+                    self.load_categories();
+                    self.mode = AppMode::CategorySelection;
+                }
+                Some(3) => {
+                    self.input.clear();
+                    self.mode = AppMode::InputUrl;
+                }
+                Some(4) => {
+                    self.pending_project = Some(ProjectInfo {
+                        name: "IntelliJ IDEA".to_string(),
+                        path: PathBuf::from("IDE"),
+                        git_branch: None,
+                        has_changes: false,
+                        language: None,
+                    });
+                    self.previous_mode = Some(AppMode::MainMenu);
+                    self.mode = AppMode::ConfirmOpen;
+                }
+                Some(5) => {
+                    self.mode = AppMode::ThemeSelection;
+                }
+                Some(6) => {
+                    self.input = self.config.base_dir.clone();
+                    self.mode = AppMode::ChangeBaseDir;
+                }
+                _ => {}
+            },
             AppMode::ThemeSelection => {
                 if let Some(i) = self.theme_state.selected() {
                     self.config.theme = self.theme_items[i].to_string();
@@ -324,47 +553,60 @@ impl App {
                     if new_path.exists() {
                         self.config.base_dir = self.input.clone();
                         let _ = self.save_config();
-                        self.status_message = Some((format!("Base directory updated to {}!", self.input), Instant::now()));
+                        self.status_message = Some((
+                            format!("Base directory updated to {}!", self.input),
+                            Instant::now(),
+                        ));
                         self.mode = AppMode::MainMenu;
                     } else {
-                        self.status_message = Some(("Error: Path does not exist!".to_string(), Instant::now()));
+                        self.status_message =
+                            Some(("Error: Path does not exist!".to_string(), Instant::now()));
                     }
                 }
             }
             AppMode::CategorySelection => {
                 let filtered = self.get_filtered_categories();
-                if let Some(i) = self.category_state.selected() {
-                    if i < filtered.len() {
-                        let cat = filtered[i].clone();
-                        self.load_projects(cat);
-                        self.mode = AppMode::ProjectSelection;
-                        self.is_searching = false; self.search_query.clear();
-                    }
+                if let Some(i) = self.category_state.selected() && i < filtered.len() {
+                    let cat = filtered[i].clone();
+                    self.load_projects(cat);
+                    self.mode = AppMode::ProjectSelection;
+                    self.is_searching = false;
+                    self.search_query.clear();
                 }
             }
             AppMode::ProjectSelection | AppMode::Favorites | AppMode::Recent => {
                 let query = self.search_query.to_lowercase();
-                let filtered: Vec<&ProjectInfo> = self.projects.iter().filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query)).collect();
-                if let Some(i) = self.project_state.selected() {
-                    if i < filtered.len() {
-                        let proj = filtered[i];
-                        self.pending_project = Some(ProjectInfo { name: proj.name.clone(), path: proj.path.clone(), git_branch: None, has_changes: false, language: None });
-                        self.previous_mode = Some(self.mode.clone());
-                        self.mode = AppMode::ConfirmOpen;
-                    }
+                let filtered: Vec<&ProjectInfo> = self
+                    .projects
+                    .iter()
+                    .filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query))
+                    .collect();
+                if let Some(i) = self.project_state.selected() && i < filtered.len() {
+                    let proj = filtered[i];
+                    self.pending_project = Some(ProjectInfo {
+                        name: proj.name.clone(),
+                        path: proj.path.clone(),
+                        git_branch: None,
+                        has_changes: false,
+                        language: None,
+                    });
+                    self.previous_mode = Some(self.mode.clone());
+                    self.mode = AppMode::ConfirmOpen;
                 }
             }
             AppMode::InputUrl => {
-                if !self.input.is_empty() { self.load_categories(); self.mode = AppMode::CloneCategory; }
+                if !self.input.is_empty() {
+                    self.load_categories();
+                    self.mode = AppMode::CloneCategory;
+                }
             }
             AppMode::CloneCategory => {
                 let filtered = self.get_filtered_categories();
-                if let Some(i) = self.category_state.selected() {
-                    if i < filtered.len() {
-                        let cat = filtered[i].clone();
-                        self.clone_repo(cat)?;
-                        self.is_searching = false; self.search_query.clear();
-                    }
+                if let Some(i) = self.category_state.selected() && i < filtered.len() {
+                    let cat = filtered[i].clone();
+                    self.clone_repo(cat)?;
+                    self.is_searching = false;
+                    self.search_query.clear();
                 }
             }
             _ => {}
@@ -375,13 +617,23 @@ impl App {
     pub fn execute_pending_open(&mut self) -> Result<()> {
         if let Some(proj) = self.pending_project.take() {
             if proj.name == "IntelliJ IDEA" {
-                process::Command::new(&self.config.idea_path).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn().map_err(|e| IdeaError::Spawn(e.to_string()))?;
-                self.status_message = Some(("Opening IntelliJ IDEA...".to_string(), Instant::now()));
+                process::Command::new(&self.config.idea_path)
+                    .stdout(process::Stdio::null())
+                    .stderr(process::Stdio::null())
+                    .spawn()
+                    .map_err(|e| IdeaError::Spawn(e.to_string()))?;
+                self.status_message =
+                    Some(("Opening IntelliJ IDEA...".to_string(), Instant::now()));
             } else {
                 let path_str = proj.path.to_str().unwrap_or("").to_string();
                 let name = proj.name.clone();
                 self.add_to_recent(path_str.clone());
-                process::Command::new(&self.config.idea_path).arg(path_str).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn().map_err(|e| IdeaError::Spawn(e.to_string()))?;
+                process::Command::new(&self.config.idea_path)
+                    .arg(path_str)
+                    .stdout(process::Stdio::null())
+                    .stderr(process::Stdio::null())
+                    .spawn()
+                    .map_err(|e| IdeaError::Spawn(e.to_string()))?;
                 self.status_message = Some((format!("Launched {}!", name), Instant::now()));
             }
         }
@@ -392,21 +644,49 @@ impl App {
     pub fn clone_repo(&mut self, category: String) -> Result<()> {
         let clone_dir = PathBuf::from(&self.config.base_dir).join(&category);
         let url = self.input.clone();
-        let project_name = url.split('/').last().and_then(|s| s.strip_suffix(".git").or(Some(s))).unwrap_or("new-project");
+        let project_name = url
+            .split('/')
+            .next_back()
+            .and_then(|s| s.strip_suffix(".git").or(Some(s)))
+            .unwrap_or("new-project");
         self.status_message = Some((format!("Cloning {}...", project_name), Instant::now()));
         let mut command = process::Command::new("gh");
-        command.arg("repo").arg("clone").arg(&url).arg("--").arg("--quiet").current_dir(&clone_dir).stdout(process::Stdio::null()).stderr(process::Stdio::null());
+        command
+            .arg("repo")
+            .arg("clone")
+            .arg(&url)
+            .arg("--")
+            .arg("--quiet")
+            .current_dir(&clone_dir)
+            .stdout(process::Stdio::null())
+            .stderr(process::Stdio::null());
         let status = match command.status() {
             Ok(s) if s.success() => Ok(s),
-            _ => process::Command::new("git").arg("clone").arg("--quiet").arg(&url).current_dir(&clone_dir).stdout(process::Stdio::null()).stderr(process::Stdio::null()).status().map_err(|e| IdeaError::Git(e.to_string()))
+            _ => process::Command::new("git")
+                .arg("clone")
+                .arg("--quiet")
+                .arg(&url)
+                .current_dir(&clone_dir)
+                .stdout(process::Stdio::null())
+                .stderr(process::Stdio::null())
+                .status()
+                .map_err(|e| IdeaError::Git(e.to_string())),
         }?;
         if status.success() {
             let project_path = clone_dir.join(project_name);
             self.add_to_recent(project_path.to_str().unwrap_or("").to_string());
-            process::Command::new(&self.config.idea_path).arg(project_path.to_str().unwrap_or("")).stdout(process::Stdio::null()).stderr(process::Stdio::null()).spawn().map_err(|e| IdeaError::Spawn(e.to_string()))?;
-            self.status_message = Some((format!("Cloned and opened {}!", project_name), Instant::now()));
+            process::Command::new(&self.config.idea_path)
+                .arg(project_path.to_str().unwrap_or(""))
+                .stdout(process::Stdio::null())
+                .stderr(process::Stdio::null())
+                .spawn()
+                .map_err(|e| IdeaError::Spawn(e.to_string()))?;
+            self.status_message = Some((
+                format!("Cloned and opened {}!", project_name),
+                Instant::now(),
+            ));
             self.mode = AppMode::MainMenu;
-        } else { 
+        } else {
             return Err(IdeaError::CloneFailed(project_name.to_string()));
         }
         Ok(())
@@ -417,7 +697,12 @@ impl App {
         self.search_query.clear();
         match self.mode {
             AppMode::MainMenu => {}
-            AppMode::CategorySelection | AppMode::InputUrl | AppMode::Favorites | AppMode::Recent | AppMode::ThemeSelection | AppMode::ChangeBaseDir => self.mode = AppMode::MainMenu,
+            AppMode::CategorySelection
+            | AppMode::InputUrl
+            | AppMode::Favorites
+            | AppMode::Recent
+            | AppMode::ThemeSelection
+            | AppMode::ChangeBaseDir => self.mode = AppMode::MainMenu,
             AppMode::ProjectSelection => self.mode = AppMode::CategorySelection,
             AppMode::CloneCategory => self.mode = AppMode::InputUrl,
             AppMode::ConfirmOpen | AppMode::Help => {
@@ -438,49 +723,70 @@ mod tests {
     fn test_detect_language_rust() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("Cargo.toml"), "").unwrap();
-        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Rust".to_string()));
+        assert_eq!(
+            App::detect_language(&dir.path().to_path_buf()),
+            Some("Rust".to_string())
+        );
     }
 
     #[test]
     fn test_detect_language_java_pom() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("pom.xml"), "").unwrap();
-        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Java".to_string()));
+        assert_eq!(
+            App::detect_language(&dir.path().to_path_buf()),
+            Some("Java".to_string())
+        );
     }
 
     #[test]
     fn test_detect_language_java_gradle() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("build.gradle"), "").unwrap();
-        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Java".to_string()));
+        assert_eq!(
+            App::detect_language(&dir.path().to_path_buf()),
+            Some("Java".to_string())
+        );
     }
 
     #[test]
     fn test_detect_language_javascript_typescript() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("package.json"), "").unwrap();
-        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("JS/TS".to_string()));
+        assert_eq!(
+            App::detect_language(&dir.path().to_path_buf()),
+            Some("JS/TS".to_string())
+        );
     }
 
     #[test]
     fn test_detect_language_python_requirements() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("requirements.txt"), "").unwrap();
-        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Python".to_string()));
+        assert_eq!(
+            App::detect_language(&dir.path().to_path_buf()),
+            Some("Python".to_string())
+        );
     }
 
     #[test]
     fn test_detect_language_python_pyproject() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("pyproject.toml"), "").unwrap();
-        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Python".to_string()));
+        assert_eq!(
+            App::detect_language(&dir.path().to_path_buf()),
+            Some("Python".to_string())
+        );
     }
 
     #[test]
     fn test_detect_language_go() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("go.mod"), "").unwrap();
-        assert_eq!(App::detect_language(&dir.path().to_path_buf()), Some("Go".to_string()));
+        assert_eq!(
+            App::detect_language(&dir.path().to_path_buf()),
+            Some("Go".to_string())
+        );
     }
 
     #[test]
