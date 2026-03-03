@@ -347,25 +347,50 @@ impl App {
         None
     }
 
+    pub fn is_project(path: &Path) -> bool {
+        path.join(".git").exists() || Self::detect_language(path).is_some()
+    }
+
     pub fn load_projects(&mut self, category: String) {
         let mut projs = Vec::new();
-        let cat_path = PathBuf::from(&self.config.base_dir).join(&category);
-        if let Ok(entries) = fs::read_dir(cat_path) {
+        let cat_path = if category == "." {
+            PathBuf::from(&self.config.base_dir)
+        } else {
+            PathBuf::from(&self.config.base_dir).join(&category)
+        };
+
+        // If the category folder itself is a project, include it
+        if category != "." && Self::is_project(&cat_path) {
+            let (branch, changes) = Self::get_git_info(&cat_path);
+            let language = Self::detect_language(&cat_path);
+            projs.push(ProjectInfo {
+                name: format!(". ({})", category),
+                path: cat_path.clone(),
+                git_branch: branch,
+                has_changes: changes,
+                language,
+            });
+        }
+
+        if let Ok(entries) = fs::read_dir(&cat_path) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir()
                     && let Some(name) = path.file_name().and_then(|n| n.to_str())
                     && !name.starts_with('.')
                 {
-                    let (branch, changes) = Self::get_git_info(&path);
-                    let language = Self::detect_language(&path);
-                    projs.push(ProjectInfo {
-                        name: name.to_string(),
-                        path,
-                        git_branch: branch,
-                        has_changes: changes,
-                        language,
-                    });
+                    // Only add if it's actually a project or if we're in a category
+                    if Self::is_project(&path) {
+                        let (branch, changes) = Self::get_git_info(&path);
+                        let language = Self::detect_language(&path);
+                        projs.push(ProjectInfo {
+                            name: name.to_string(),
+                            path,
+                            git_branch: branch,
+                            has_changes: changes,
+                            language,
+                        });
+                    }
                 }
             }
         }
@@ -636,7 +661,18 @@ impl App {
                 }
                 Some(2) => {
                     self.load_categories();
-                    self.mode = AppMode::CategorySelection;
+                    // If everything in base_dir is a project, skip category view
+                    let any_direct_projects = self.categories.iter().any(|c| {
+                        let path = PathBuf::from(&self.config.base_dir).join(c);
+                        Self::is_project(&path)
+                    });
+
+                    if any_direct_projects {
+                        self.load_projects(".".to_string());
+                        self.mode = AppMode::ProjectSelection;
+                    } else {
+                        self.mode = AppMode::CategorySelection;
+                    }
                 }
                 Some(3) => {
                     self.input.clear();
@@ -845,7 +881,13 @@ impl App {
             | AppMode::Recent
             | AppMode::ThemeSelection
             | AppMode::ChangeBaseDir => self.mode = AppMode::MainMenu,
-            AppMode::ProjectSelection => self.mode = AppMode::CategorySelection,
+            AppMode::ProjectSelection => {
+                if self.selected_category == Some(".".to_string()) {
+                    self.mode = AppMode::MainMenu;
+                } else {
+                    self.mode = AppMode::CategorySelection;
+                }
+            }
             AppMode::CloneCategory => self.mode = AppMode::InputUrl,
             AppMode::ConfirmOpen | AppMode::Help | AppMode::BranchSelection => {
                 self.mode = self.previous_mode.take().unwrap_or(AppMode::MainMenu);
