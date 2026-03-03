@@ -3,6 +3,9 @@ use crate::models::{AppMode, Config, ProjectInfo};
 use ratatui::widgets::{ListState, TableState};
 use std::{fs, path::{PathBuf, Path}, process, time::Instant};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 pub struct App {
     pub mode: AppMode,
     pub previous_mode: Option<AppMode>,
@@ -617,23 +620,14 @@ impl App {
     pub fn execute_pending_open(&mut self) -> Result<()> {
         if let Some(proj) = self.pending_project.take() {
             if proj.name == "IntelliJ IDEA" {
-                process::Command::new(&self.config.idea_path)
-                    .stdout(process::Stdio::null())
-                    .stderr(process::Stdio::null())
-                    .spawn()
-                    .map_err(|e| IdeaError::Spawn(e.to_string()))?;
+                self.spawn_process(vec![])?;
                 self.status_message =
                     Some(("Opening IntelliJ IDEA...".to_string(), Instant::now()));
             } else {
                 let path_str = proj.path.to_str().unwrap_or("").to_string();
                 let name = proj.name.clone();
                 self.add_to_recent(path_str.clone());
-                process::Command::new(&self.config.idea_path)
-                    .arg(path_str)
-                    .stdout(process::Stdio::null())
-                    .stderr(process::Stdio::null())
-                    .spawn()
-                    .map_err(|e| IdeaError::Spawn(e.to_string()))?;
+                self.spawn_process(vec![path_str])?;
                 self.status_message = Some((format!("Launched {}!", name), Instant::now()));
             }
         }
@@ -674,13 +668,9 @@ impl App {
         }?;
         if status.success() {
             let project_path = clone_dir.join(project_name);
-            self.add_to_recent(project_path.to_str().unwrap_or("").to_string());
-            process::Command::new(&self.config.idea_path)
-                .arg(project_path.to_str().unwrap_or(""))
-                .stdout(process::Stdio::null())
-                .stderr(process::Stdio::null())
-                .spawn()
-                .map_err(|e| IdeaError::Spawn(e.to_string()))?;
+            let path_str = project_path.to_str().unwrap_or("").to_string();
+            self.add_to_recent(path_str.clone());
+            self.spawn_process(vec![path_str])?;
             self.status_message = Some((
                 format!("Cloned and opened {}!", project_name),
                 Instant::now(),
@@ -689,6 +679,29 @@ impl App {
         } else {
             return Err(IdeaError::CloneFailed(project_name.to_string()));
         }
+        Ok(())
+    }
+
+    fn spawn_process(&self, args: Vec<String>) -> Result<()> {
+        let mut command = process::Command::new(&self.config.idea_path);
+        for arg in args {
+            command.arg(arg);
+        }
+        command
+            .stdout(process::Stdio::null())
+            .stderr(process::Stdio::null());
+
+        #[cfg(unix)]
+        {
+            unsafe {
+                command.pre_exec(|| {
+                    libc::setsid();
+                    Ok(())
+                });
+            }
+        }
+
+        command.spawn().map_err(|e| IdeaError::Spawn(e.to_string()))?;
         Ok(())
     }
 
