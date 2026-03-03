@@ -38,6 +38,10 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         AppMode::Favorites => " Favorite Projects ".to_string(),
         AppMode::Recent => " Recently Opened Projects ".to_string(),
         AppMode::ChangeBaseDir => " Update Base Directory ".to_string(),
+        AppMode::BranchSelection => format!(
+            " Select Branch for {} ",
+            app.pending_project.as_ref().map(|p| p.name.clone()).unwrap_or_default()
+        ),
     };
     f.render_widget(
         Paragraph::new(title_text)
@@ -56,7 +60,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     );
 
     match app.mode {
-        AppMode::MainMenu | AppMode::ConfirmOpen | AppMode::Help => {
+        AppMode::MainMenu | AppMode::ConfirmOpen | AppMode::Help | AppMode::BranchSelection => {
             let items: Vec<ListItem> = app
                 .menu_items
                 .iter()
@@ -294,10 +298,12 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         }
     }
 
-    if app.mode == AppMode::ConfirmOpen || app.mode == AppMode::Help {
+    if app.mode == AppMode::ConfirmOpen || app.mode == AppMode::Help || app.mode == AppMode::BranchSelection {
         dim_background(f, &theme);
         let area = if app.mode == AppMode::Help {
             centered_rect(70, 70, f.area())
+        } else if app.mode == AppMode::BranchSelection {
+            centered_rect(50, 60, f.area())
         } else {
             centered_rect(60, 20, f.area())
         };
@@ -323,6 +329,36 @@ Open {} in IntelliJ?
                     area,
                 );
             }
+        } else if app.mode == AppMode::BranchSelection {
+            let items: Vec<ListItem> = app
+                .branches
+                .iter()
+                .enumerate()
+                .map(|(idx, b)| {
+                    let is_selected = app.branch_state.selected() == Some(idx);
+                    let style = if is_selected {
+                        Style::default()
+                            .fg(theme.highlight)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(theme.text)
+                    };
+                    ListItem::new(format!(" {}", b)).style(style)
+                })
+                .collect();
+            f.render_stateful_widget(
+                List::new(items)
+                    .block(
+                        Block::default()
+                            .title(" Branches ")
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(theme.border)),
+                    )
+                    .highlight_style(Style::default())
+                    .highlight_symbol(Span::styled("> ", Style::default().fg(theme.highlight))),
+                area,
+                &mut app.branch_state,
+            );
         } else {
             let block = Block::default()
                 .title(" Help & Shortcuts ")
@@ -340,6 +376,7 @@ Open {} in IntelliJ?
                 ]),
                 Row::new(vec![Cell::from("/"), Cell::from("Search / Filter")]),
                 Row::new(vec![Cell::from("f"), Cell::from("Toggle Favorite")]),
+                Row::new(vec![Cell::from("b"), Cell::from("Switch Branch & Open")]),
                 Row::new(vec![Cell::from("t"), Cell::from("Open Quick Terminal")]),
                 Row::new(vec![Cell::from("r"), Cell::from("Refresh Git Status")]),
                 Row::new(vec![Cell::from("q"), Cell::from("Quit")]),
@@ -368,11 +405,12 @@ Open {} in IntelliJ?
     } else {
         match app.mode {
             AppMode::ConfirmOpen => "y: Yes  •  n: No / Cancel".to_string(),
+            AppMode::BranchSelection => "Enter: Checkout & Open  •  c: Checkout only  •  Backspace: Cancel".to_string(),
             AppMode::Help => "Press any key to close".to_string(),
             AppMode::ThemeSelection => "Enter: Apply Theme  •  Backspace: Back".to_string(),
             AppMode::ChangeBaseDir => "Enter: Save Path  •  Backspace: Back".to_string(),
             AppMode::MainMenu => "Enter / Right: Select  •  ?: Help  •  q: Quit".to_string(),
-            _ => "/: Search  •  r: Refresh  •  t: Terminal  •  f: Favorite  •  Backspace: Back  •  ?: Help".to_string(),
+            _ => "/: Search  •  r: Refresh  •  t: Terminal  •  b: Branch  •  f: Favorite  •  Backspace: Back  •  ?: Help".to_string(),
         }
     };
     f.render_widget(

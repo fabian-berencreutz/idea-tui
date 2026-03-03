@@ -15,6 +15,7 @@ pub enum AppMode {
     Help,
     ThemeSelection,
     ChangeBaseDir,
+    BranchSelection,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

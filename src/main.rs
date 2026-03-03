@@ -71,6 +71,21 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> 
                 }
             } else if app.mode == AppMode::Help {
                 app.go_back();
+            } else if app.mode == AppMode::BranchSelection {
+                match key.code {
+                    KeyCode::Enter => {
+                        app.on_enter()?;
+                    }
+                    KeyCode::Char('c') => {
+                        app.checkout_only()?;
+                    }
+                    KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('h') => {
+                        app.go_back();
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => app.next(),
+                    KeyCode::Up | KeyCode::Char('k') => app.previous(),
+                    _ => {}
+                }
             } else if app.is_searching {
                 match key.code {
                     KeyCode::Enter => {
@@ -134,6 +149,36 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> 
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('f') => {
                         app.toggle_favorite();
+                    }
+                    KeyCode::Char('b') => {
+                        if app.mode == AppMode::ProjectSelection
+                            || app.mode == AppMode::Favorites
+                            || app.mode == AppMode::Recent
+                        {
+                            let query = app.search_query.to_lowercase();
+                            let filtered: Vec<&crate::models::ProjectInfo> = app
+                                .projects
+                                .iter()
+                                .filter(|p| {
+                                    query.is_empty() || p.name.to_lowercase().contains(&query)
+                                })
+                                .collect();
+
+                            if let Some(i) = app.project_state.selected() && i < filtered.len() {
+                                let proj = filtered[i].clone();
+                                app.load_branches(&proj.path);
+                                if !app.branches.is_empty() {
+                                    app.pending_project = Some(proj);
+                                    app.previous_mode = Some(app.mode.clone());
+                                    app.mode = AppMode::BranchSelection;
+                                } else {
+                                    app.status_message = Some((
+                                        "No git branches found!".to_string(),
+                                        std::time::Instant::now(),
+                                    ));
+                                }
+                            }
+                        }
                     }
                     KeyCode::Char('t') => {
                         app.open_terminal()?;

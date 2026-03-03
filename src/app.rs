@@ -24,6 +24,8 @@ pub struct App {
     pub search_query: String,
     pub is_searching: bool,
     pub pending_project: Option<ProjectInfo>,
+    pub branches: Vec<String>,
+    pub branch_state: ListState,
 }
 
 impl App {
@@ -89,6 +91,8 @@ impl App {
             search_query: String::new(),
             is_searching: false,
             pending_project: None,
+            branches: Vec::new(),
+            branch_state: ListState::default(),
         };
 
         // Still check for IDEA path, but don't block setup for it.
@@ -123,6 +127,12 @@ impl App {
     }
 
     pub fn refresh_current_view(&mut self) {
+        self.reload_current_view();
+        self.status_message = Some(("Status refreshed!".to_string(), Instant::now()));
+    }
+
+    pub fn reload_current_view(&mut self) {
+        let current_selection = self.project_state.selected();
         match self.mode {
             AppMode::MainMenu | AppMode::ThemeSelection => {}
             AppMode::CategorySelection | AppMode::CloneCategory => self.load_categories(),
@@ -133,9 +143,28 @@ impl App {
             }
             AppMode::Favorites => self.load_favorites(),
             AppMode::Recent => self.load_recent(),
-            _ => {}
+            _ => {
+                // If in a popup mode, reload data based on where we came from
+                if let Some(prev) = &self.previous_mode {
+                    match prev {
+                        AppMode::ProjectSelection => {
+                            if let Some(cat) = self.selected_category.clone() {
+                                self.load_projects(cat);
+                            }
+                        }
+                        AppMode::Favorites => self.load_favorites(),
+                        AppMode::Recent => self.load_recent(),
+                        _ => {}
+                    }
+                }
+            }
         }
-        self.status_message = Some(("Status refreshed!".to_string(), Instant::now()));
+        // Restore selection after reload if it exists
+        if let Some(idx) = current_selection {
+            if idx < self.projects.len() {
+                self.project_state.select(Some(idx));
+            }
+        }
     }
 
     pub fn open_terminal(&mut self) -> Result<()> {
@@ -350,6 +379,62 @@ impl App {
         self.selected_category = Some(category);
     }
 
+    pub fn load_branches(&mut self, path: &Path) {
+        let output = process::Command::new("git")
+            .arg("branch")
+            .arg("--format=%(refname:short)")
+            .current_dir(path)
+            .output();
+
+        if let Ok(out) = output {
+            let branches: Vec<String> = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            self.branches = branches;
+            self.branch_state.select(if self.branches.is_empty() {
+                None
+            } else {
+                Some(0)
+            });
+        }
+    }
+
+    pub fn switch_branch(&mut self, branch: &str, path: &Path) -> Result<()> {
+        let status = process::Command::new("git")
+            .arg("checkout")
+            .arg(branch)
+            .current_dir(path)
+            .stdout(process::Stdio::null())
+            .stderr(process::Stdio::null())
+            .status()
+            .map_err(|e| IdeaError::Git(e.to_string()))?;
+
+        if status.success() {
+            self.status_message = Some((
+                format!("Switched to branch {}!", branch),
+                Instant::now(),
+            ));
+            self.reload_current_view();
+            Ok(())
+        } else {
+            Err(IdeaError::Git(format!("Failed to switch to branch {}", branch)))
+        }
+    }
+
+    pub fn checkout_only(&mut self) -> Result<()> {
+        if let Some(i) = self.branch_state.selected() && i < self.branches.len() {
+            let branch = self.branches[i].clone();
+            let path = self.pending_project.as_ref().map(|p| p.path.clone());
+            if let Some(p) = path {
+                self.switch_branch(&branch, &p)?;
+                self.go_back();
+            }
+        }
+        Ok(())
+    }
+
     pub fn get_filtered_categories(&self) -> Vec<String> {
         if self.search_query.is_empty() {
             self.categories.clone()
@@ -429,6 +514,23 @@ impl App {
                 };
                 self.project_state.select(Some(i));
             }
+            AppMode::BranchSelection => {
+                let len = self.branches.len();
+                if len == 0 {
+                    return;
+                }
+                let i = match self.branch_state.selected() {
+                    Some(i) => {
+                        if i >= len - 1 {
+                            0
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.branch_state.select(Some(i));
+            }
             _ => {}
         }
     }
@@ -499,6 +601,23 @@ impl App {
                     None => 0,
                 };
                 self.project_state.select(Some(i));
+            }
+            AppMode::BranchSelection => {
+                let len = self.branches.len();
+                if len == 0 {
+                    return;
+                }
+                let i = match self.branch_state.selected() {
+                    Some(i) => {
+                        if i == 0 {
+                            len - 1
+                        } else {
+                            i - 1
+                        }
+                    }
+                    None => 0,
+                };
+                self.branch_state.select(Some(i));
             }
             _ => {}
         }
@@ -612,6 +731,16 @@ impl App {
                     self.search_query.clear();
                 }
             }
+            AppMode::BranchSelection => {
+                if let Some(i) = self.branch_state.selected() && i < self.branches.len() {
+                    let branch = self.branches[i].clone();
+                    if let Some(proj) = self.pending_project.clone() {
+                        self.switch_branch(&branch, &proj.path)?;
+                        // After switching branch, proceed to open the project
+                        self.mode = AppMode::ConfirmOpen;
+                    }
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -718,9 +847,10 @@ impl App {
             | AppMode::ChangeBaseDir => self.mode = AppMode::MainMenu,
             AppMode::ProjectSelection => self.mode = AppMode::CategorySelection,
             AppMode::CloneCategory => self.mode = AppMode::InputUrl,
-            AppMode::ConfirmOpen | AppMode::Help => {
+            AppMode::ConfirmOpen | AppMode::Help | AppMode::BranchSelection => {
                 self.mode = self.previous_mode.take().unwrap_or(AppMode::MainMenu);
                 self.pending_project = None;
+                self.branches.clear();
             }
         }
     }
