@@ -31,14 +31,24 @@ A high-performance, minimalist terminal-based project manager and launcher for I
 
 ## 🚀 Installation
 
-1.  Clone this repository.
-2.  Build the binary:
+1.  **Clone this repository**:
+    ```bash
+    git clone https://github.com/fabian-berencreutz/idea-tui.git
+    cd idea-tui
+    ```
+
+2.  **Build the binary** (requires [Rust](https://rustup.rs/)):
     ```bash
     cargo build --release
     ```
-3.  Add the binary to your PATH or create an alias in your shell config (`.zshrc` / `.bashrc`):
+
+3.  **Add to PATH** or create an alias in your shell config (`.zshrc` / `.bashrc`):
     ```bash
+    # Example for alias
     alias idea-tui='/path/to/idea-tui/target/release/idea-tui'
+
+    # Or move it to a folder in your PATH
+    sudo cp target/release/idea-tui /usr/local/bin/
     ```
 
 ## ⌨️ Shortcuts
