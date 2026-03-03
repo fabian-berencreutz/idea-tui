@@ -31,25 +31,25 @@ A high-performance, minimalist terminal-based project manager and launcher for I
 
 ## 🚀 Installation
 
+### ⚡ Fastest Way (requires Rust)
+Install directly from GitHub:
+```bash
+cargo install --git https://github.com/fabian-berencreutz/idea-tui.git
+```
+This will build and place the `idea-tui` binary in your `~/.cargo/bin/` folder (ensure this is in your PATH).
+
+### 🛠️ Manual Build
+If you prefer to build it from source:
 1.  **Clone this repository**:
     ```bash
     git clone https://github.com/fabian-berencreutz/idea-tui.git
     cd idea-tui
     ```
-
-2.  **Build the binary** (requires [Rust](https://rustup.rs/)):
+2.  **Build and install**:
     ```bash
-    cargo build --release
+    cargo install --path .
     ```
-
-3.  **Add to PATH** or create an alias in your shell config (`.zshrc` / `.bashrc`):
-    ```bash
-    # Example for alias
-    alias idea-tui='/path/to/idea-tui/target/release/idea-tui'
-
-    # Or move it to a folder in your PATH
-    sudo cp target/release/idea-tui /usr/local/bin/
-    ```
+    *(This is cleaner than `cargo build --release` as it handles the binary placement for you)*.
 
 ## ⌨️ Shortcuts
 
