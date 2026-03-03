@@ -71,9 +71,16 @@ If you prefer to build it from source:
 On first run, `idea-tui` creates a configuration file at:
 `~/.config/idea-tui/default-config.toml`
 
+> [!IMPORTANT]
+> **You must ensure `idea_path` points to your actual IntelliJ executable.**
+> If you can launch IntelliJ from your terminal by typing `idea`, you can find the correct path by running:
+> ```bash
+> which idea
+> ```
+
 ```toml
 base_dir = "/home/user/dev"
-idea_path = "/opt/intellij-idea-ultimate-edition/bin/idea"
+idea_path = "/usr/bin/idea"           # Update this to your 'which idea' output
 terminal_command = "kitty --directory" # Command to launch terminal
 theme = "Darcula (default)"            # Choose from 11 available themes
 ```
